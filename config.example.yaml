@@ -54,3 +54,7 @@ usage:
   lookback: 1h
   resync_interval: 24h   # re-read the whole span; past hours never change, this only drops deleted rows
   query_timeout: 1m
+  # After each quota fetch, read what sub2api logged for the account since its
+  # 5h and weekly windows started (llm_quota_window_consumed), for the quota
+  # capacity estimate. One indexed query per fetch.
+  quota_windows: true

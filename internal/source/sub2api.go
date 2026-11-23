@@ -44,6 +44,15 @@ func (a *Account) IDLabel() string {
 	return strconv.FormatInt(a.ID, 10)
 }
 
+// UsageID is the accounts.id that usage_logs refers to, or 0 for an account
+// from the config file.
+func (a *Account) UsageID() int64 {
+	if a.LabelID != "" {
+		return 0
+	}
+	return a.ID
+}
+
 // Credential returns credentials[key] when it is a string.
 func (a *Account) Credential(key string) string {
 	if a == nil || a.Credentials == nil {

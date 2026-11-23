@@ -18,6 +18,11 @@ var (
 		"Used share of a rolling quota window (0-1, may exceed 1).", withBase("window"), nil)
 	descReset = prometheus.NewDesc("llm_quota_reset_timestamp_seconds",
 		"Unix time when the quota window resets.", withBase("window"), nil)
+	descWindowStart = prometheus.NewDesc("llm_quota_window_start_timestamp_seconds",
+		"Unix time the current window started: its reset time minus its length (5h and weekly only).", withBase("window"), nil)
+	descWindowConsumed = prometheus.NewDesc("llm_quota_window_consumed",
+		"Usage sub2api logged for the account's API key from the window start to the quota fetch, from usage_logs. unit=usd: list-price value; tokens: all types; requests.",
+		withBase("window", "unit"), nil)
 	descWindowUsed = prometheus.NewDesc("llm_quota_window_used",
 		"Absolute amount used in the window, when the provider reports it.", withBase("window", "unit"), nil)
 	descWindowLimit = prometheus.NewDesc("llm_quota_window_limit",
@@ -60,7 +65,7 @@ var (
 
 func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	for _, d := range []*prometheus.Desc{
-		descUsedRatio, descReset, descWindowUsed, descWindowLimit, descBalance, descBalanceAvailable, descPlan,
+		descUsedRatio, descReset, descWindowStart, descWindowConsumed, descWindowUsed, descWindowLimit, descBalance, descBalanceAvailable, descPlan,
 		descUp, descAuthValid, descSupported, descBlacklisted, descBlacklistUntil, descLastAttempt,
 		descLastSuccess, descDuration, descHTTPStatus, descAccountInfo, descAccounts,
 		descFetchTotal, descDBUp, descDBReload,
@@ -146,6 +151,14 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			if t.ResetAt != "" {
 				if ts, err := time.Parse(time.RFC3339, t.ResetAt); err == nil {
 					gauge(ch, descReset, unixF(ts), append(l, t.Window)...)
+				}
+			}
+			if w, ok := g.windows[t.Window]; ok {
+				gauge(ch, descWindowStart, unixF(w.Start), append(l, t.Window)...)
+				if c := w.Consumed; c != nil {
+					gauge(ch, descWindowConsumed, c.Value, append(l, t.Window, "usd")...)
+					gauge(ch, descWindowConsumed, c.Tokens, append(l, t.Window, "tokens")...)
+					gauge(ch, descWindowConsumed, c.Requests, append(l, t.Window, "requests")...)
 				}
 			}
 			if t.Used != nil {

@@ -1,0 +1,56 @@
+# Recording rules for the quota capacity estimate (README: 额度估计).
+# Load with rule_files in prometheus.yml; the Grafana dashboard's estimate
+# section reads these series.
+#
+# Each quota fetch is one sample: usage sub2api logged since the window
+# started (llm_quota_window_consumed, list-price USD) / share used. An
+# account's capacity pools the samples over the lookback as
+# sum(usage) / sum(share), which weighs late, precise samples more. Samples
+# under 10% used are dropped (GLM reports whole percents); keep that in line
+# with gen_dashboard.py --estimate-min-ratio. A capacity of 0 (no usage logged
+# here) is no estimate.
+#
+# Use of a key outside this sub2api raises the share without usage_logs rows,
+# so it can only pull an account's estimate down. Accounts on the same plan
+# have the same capacity: the plan capacity is the highest among them.
+groups:
+  - name: llm_quota_estimate
+    interval: 5m
+    rules:
+      - record: llm_quota:window_capacity_usd:estimate
+        expr: |
+          (
+            sum without (unit) (sum_over_time((
+              llm_quota_window_consumed{unit="usd", window="5h"}
+              and ignoring (unit) (llm_quota_used_ratio{window="5h"} >= 0.1)
+            )[7d:5m]))
+            / sum_over_time((
+              llm_quota_used_ratio{window="5h"} >= 0.1
+              and ignoring (unit) llm_quota_window_consumed{unit="usd", window="5h"}
+            )[7d:5m])
+          ) > 0
+        labels:
+          window: 5h
+      - record: llm_quota:window_capacity_usd:estimate
+        expr: |
+          (
+            sum without (unit) (sum_over_time((
+              llm_quota_window_consumed{unit="usd", window="weekly"}
+              and ignoring (unit) (llm_quota_used_ratio{window="weekly"} >= 0.1)
+            )[28d:30m]))
+            / sum_over_time((
+              llm_quota_used_ratio{window="weekly"} >= 0.1
+              and ignoring (unit) llm_quota_window_consumed{unit="usd", window="weekly"}
+            )[28d:30m])
+          ) > 0
+        labels:
+          window: weekly
+      # topk keeps one plan per account while a renamed plan's old series is
+      # still fresh, so the join never becomes many-to-many.
+      - record: llm_quota:plan_capacity_usd:max
+        expr: |
+          max by (job, sub2api_instance, provider, plan, window) (
+            llm_quota:window_capacity_usd:estimate
+            * on (job, instance, provider, account_id) group_left (plan)
+              topk by (job, instance, provider, account_id) (1, llm_quota_plan_info{plan!=""})
+          )

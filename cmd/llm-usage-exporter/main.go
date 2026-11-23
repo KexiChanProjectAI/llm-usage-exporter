@@ -106,6 +106,11 @@ func run(configPath string, log *slog.Logger) error {
 		}
 		registerer.MustRegister(usageCol)
 	}
+	if cfg.Usage.QuotaWindowsEnabled() {
+		exp.SetWindowUsage(func(ctx context.Context, ids []int64, spans []usage.Span) ([]usage.Consumed, error) {
+			return usage.QuerySpans(ctx, pool, ids, spans)
+		})
+	}
 
 	mux := http.NewServeMux()
 	mux.Handle(cfg.MetricsPath, promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))

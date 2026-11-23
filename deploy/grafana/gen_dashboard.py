@@ -14,7 +14,9 @@ Without either, every provider gets a table with room for 3 accounts.
 More accounts than that still show, with a scroll bar inside the table;
 regenerate to resize.
 
-Below the quota tables, a usage section charts tokens and their list-price
+Below the quota tables, an estimate section shows each plan's capacity and
+each account's estimated quota left in list-price USD (see README,
+"额度估计"); then a usage section charts tokens and their list-price
 value per provider from sub2api usage_logs: a table over each window in
 --usage-windows and stacked bars for the last 24 hours and the last 7 days.
 
@@ -33,6 +35,10 @@ ap.add_argument("--refresh", default="30s", help="auto-refresh interval")
 ap.add_argument("--instance", default="", help="only show the exporter whose config sets this instance (sub2api_instance label)")
 ap.add_argument("--providers", default="", help="provider=accounts list, e.g. zhipu=8,kimi=4; sets which tables exist and their height")
 ap.add_argument("--prometheus", default="", help="Prometheus base URL to count accounts per provider instead of --providers")
+ap.add_argument("--estimate-windows", default="5h,weekly",
+    help="quota windows to estimate the capacity of (5h, weekly); needs usage.quota_windows in the exporter and the recording rules in deploy/prometheus; empty hides the estimate")
+ap.add_argument("--estimate-min-ratio", type=float, default=0.1,
+    help="for the per-fetch charts: ignore samples under this share used; keep in line with deploy/prometheus/rules-llm-quota-estimate.yaml")
 ap.add_argument("--usage-windows", default="1,7,30", help="usage.windows of the exporter (days), for the usage table; empty hides the usage section")
 args = ap.parse_args()
 
@@ -228,8 +234,6 @@ for i in range(0, len(small), 2):
     panels += tables
     y += h
 
-# ---- usage from sub2api usage_logs ----
-USAGE_WINDOWS = sorted({int(d) for d in args.usage_windows.split(",") if d.strip()})
 # One fixed colour and display name per provider, so that a provider looks the
 # same in every chart and matches the quota tables. The order is the stacking
 # and legend order. Others (rare platforms) get palette colours after these.
@@ -245,6 +249,163 @@ BAR_OVERRIDES = [{"matcher": {"id": "byName", "options": p}, "properties": [
     {"id": "color", "value": {"mode": "fixed", "fixedColor": c}}, {"id": "displayName", "value": n}]}
     for p, n, c in USAGE_PROVIDERS]
 PROVIDER_MAPPING = [{"type": "value", "options": {p: {"text": n, "index": i} for i, (p, n, _) in enumerate(USAGE_PROVIDERS)}}]
+# ---- quota capacity estimate ----
+# The exporter reads, right after each quota fetch, what sub2api logged for
+# the account's key since that window started (llm_quota_window_consumed).
+# The recording rules in deploy/prometheus/rules-llm-quota-estimate.yaml pool
+# those samples into a capacity per account and per plan; this section only
+# reads the recorded series, so it stays cheap on a public dashboard.
+EST_WINDOWS = [w.strip() for w in args.estimate_windows.split(",") if w.strip()]
+for w in EST_WINDOWS:
+    if w not in ("5h", "weekly"):
+        raise SystemExit(f"--estimate-windows: {w} has no derivable start (5h and weekly only)")
+MIN_R = args.estimate_min_ratio
+PLAN_INFO = f'max by ({BY}, plan) (llm_quota_plan_info{{plan!="", {SEL}}})'
+
+def est_ratio(w):
+    return f'max by ({BY}) (llm_quota_used_ratio{{window="{w}", {SEL}}})'
+
+def est_sample(w):
+    """Capacity implied by the latest fetch alone."""
+    return (f'max by ({BY}) (llm_quota_window_consumed{{window="{w}", unit="usd", {SEL}}})'
+            f' / ({est_ratio(w)} >= {MIN_R}) > 0')
+
+def est_capacity(w):
+    """The account's own pooled estimate (recording rule)."""
+    return f'max by ({BY}) (llm_quota:window_capacity_usd:estimate{{window="{w}", {SEL}}})'
+
+def est_plan_capacity(w):
+    return f'max by (provider, plan) (llm_quota:plan_capacity_usd:max{{window="{w}", {SEL}}})'
+
+def est_reference(w):
+    """Capacity of the account's plan; the account's own without a plan name."""
+    return (f'max by ({BY}) (({PLAN_INFO} * on (provider, plan) group_left () {est_plan_capacity(w)})'
+            f' or ({est_capacity(w)} unless on ({BY}) {PLAN_INFO}))')
+
+def est_left(w):
+    # A window at 100% has nothing left even before there is an estimate.
+    r = est_ratio(w)
+    return f'({est_reference(w)} * clamp_min(1 - {r}, 0)) or (0 * ({r} >= 1))'
+
+def est_usable_now():
+    lefts = " or ".join(f'label_replace({est_left(w)}, "est_window", "{w}", "", "")' for w in EST_WINDOWS)
+    # A window that is not used up but has no estimate could be the tighter one.
+    unknown = " or ".join(f'(({est_ratio(w)} < 1) unless on ({BY}) {est_reference(w)})' for w in EST_WINDOWS)
+    # Any window used up, monthly included, leaves nothing.
+    exhausted = f'0 * (max by ({BY}) (llm_quota_used_ratio{{{SEL}}}) >= 1)'
+    return f'({exhausted}) or (min by ({BY}) ({lefts}) unless on ({BY}) ({unknown}))'
+
+def est_via(w):
+    """The account's own estimate against its plan's: below 1, the key is also used elsewhere."""
+    return f'{est_capacity(w)} / on ({BY}) max by ({BY}) ({PLAN_INFO} * on (provider, plan) group_left () {est_plan_capacity(w)})'
+
+VIA_WINDOW = "weekly" if "weekly" in EST_WINDOWS else EST_WINDOWS[0] if EST_WINDOWS else ""
+
+def estimate_table(y, rows):
+    t_ = lambda w: WINDOW_TITLE[w]
+    targets = [tq(f'max by ({BY}) (llm_quota_account_info{{{SEL}}}) and on ({BY}) '
+                  f'max by ({BY}) (llm_quota_used_ratio{{window=~"{"|".join(EST_WINDOWS)}", {SEL}}})', "K"),
+               tq(PLAN_INFO, "J"), tq(est_usable_now(), "N")]
+    order = ["provider", "account_name", "plan", "Value #N"]
+    rename = {"provider": "Provider", "account_name": "Account", "plan": "Plan", "Value #N": "Usable now"}
+    for w in EST_WINDOWS:
+        for ref, expr, col in ((f"L{w}", est_left(w), f"{t_(w)} left"), (f"U{w}", est_ratio(w), f"{t_(w)} used")):
+            targets.append(tq(expr, ref))
+            order.append(f"Value #{ref}")
+            rename[f"Value #{ref}"] = col
+    targets.append(tq(est_via(VIA_WINDOW), "V"))
+    order.append("Value #V")
+    rename["Value #V"] = "Via sub2api"
+    overrides = [
+        {"matcher": {"id": "byRegexp", "options": "/ used$/"}, "properties": [
+            {"id": "unit", "value": "percentunit"}, {"id": "decimals", "value": 0},
+            {"id": "thresholds", "value": THRESH}, {"id": "color", "value": {"mode": "thresholds"}},
+            {"id": "custom.cellOptions", "value": {"type": "color-text"}}, {"id": "custom.width", "value": 100}]},
+        {"matcher": {"id": "byRegexp", "options": "/ left$|^Usable now$/"}, "properties": [
+            {"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 0},
+            # Red for what rounds to $0; the used columns carry the traffic light.
+            {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "red", "value": None}, {"color": "text", "value": 0.5}]}},
+            {"id": "color", "value": {"mode": "thresholds"}}, {"id": "custom.cellOptions", "value": {"type": "color-text"}},
+            {"id": "custom.width", "value": 110}]},
+        {"matcher": {"id": "byName", "options": "Usable now"}, "properties": [
+            {"id": "custom.cellOptions", "value": {"type": "color-text", "wrapText": False}},
+            {"id": "custom.width", "value": 120}]},
+        {"matcher": {"id": "byName", "options": "Via sub2api"}, "properties": [
+            {"id": "unit", "value": "percentunit"}, {"id": "decimals", "value": 0},
+            {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "orange", "value": None}, {"color": "text", "value": 0.8}]}},
+            {"id": "color", "value": {"mode": "thresholds"}}, {"id": "custom.cellOptions", "value": {"type": "color-text"}},
+            {"id": "custom.width", "value": 110}]},
+        {"matcher": {"id": "byName", "options": "Provider"}, "properties": [{"id": "mappings", "value": PROVIDER_MAPPING}, {"id": "custom.width", "value": 110}]},
+        {"matcher": {"id": "byName", "options": "Account"}, "properties": [{"id": "custom.width", "value": 170}]},
+        {"matcher": {"id": "byName", "options": "Plan"}, "properties": [{"id": "custom.width", "value": 90}]},
+    ]
+    via_t = WINDOW_TITLE.get(VIA_WINDOW, VIA_WINDOW)
+    desc = ("Estimated quota left, in list-price USD (what the tokens would cost at list price, not the provider's own unit). "
+        f"Usable now is the smallest window left; it shows once every {'/'.join(t_(w) for w in EST_WINDOWS)} window of the account has an estimate, "
+        "and is $0 when any window, monthly included, is used up. Left = plan capacity x (1 - share used). "
+        f"Via sub2api compares the account's own {via_t} estimate with its plan's: well under 100% means the key is also used outside this sub2api. "
+        "– means no estimate yet (no sample at 10% used or more in the lookback). See README, 额度估计.")
+    return {"type": "table", "title": "Estimated quota left · list-price USD", "datasource": DS, "id": nid(), "description": desc,
+        "gridPos": {"h": table_height(rows), "w": 24, "x": 0, "y": y}, "targets": targets,
+        "transformations": [
+            {"id": "merge", "options": {}},
+            {"id": "organize", "options": {"excludeByName": {"Time": True, "account_id": True, "Value #K": True, "Value #J": True},
+                "indexByName": {n: i for i, n in enumerate(order)}, "renameByName": rename}},
+        ],
+        "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}, "noValue": "–"}, "overrides": overrides},
+        "options": {"showHeader": True, "cellHeight": "sm", "sortBy": [{"displayName": "Account", "desc": False}]}}
+
+def estimate_plan_table(y, rows):
+    has_window = f'max by ({BY}) (llm_quota_used_ratio{{window=~"{"|".join(EST_WINDOWS)}", {SEL}}})'
+    targets = [tq(f'count by (provider, plan) ({PLAN_INFO} and on ({BY}) {has_window})', "K")]
+    order, rename = ["provider", "plan", "Value #K"], {"provider": "Provider", "plan": "Plan", "Value #K": "Accounts"}
+    for w in EST_WINDOWS:
+        targets.append(tq(est_plan_capacity(w), f"P{w}"))
+        order.append(f"Value #P{w}")
+        rename[f"Value #P{w}"] = f"{WINDOW_TITLE[w]} capacity"
+    desc = ("Estimated capacity of each plan's windows, in list-price USD: the highest estimate among the plan's accounts, "
+        "since use of a key outside this sub2api only lowers an account's estimate. "
+        "Providers that report no plan name (e.g. Kimi) are estimated per account and not listed here. "
+        "A different model mix or peak-hour multipliers shift these values.")
+    return {"type": "table", "title": "Estimated plan capacity · list-price USD", "datasource": DS, "id": nid(), "description": desc,
+        "gridPos": {"h": table_height(rows), "w": 12, "x": 0, "y": y}, "targets": targets,
+        "transformations": [
+            {"id": "merge", "options": {}},
+            {"id": "organize", "options": {"excludeByName": {"Time": True},
+                "indexByName": {n: i for i, n in enumerate(order)}, "renameByName": rename}},
+            {"id": "sortBy", "options": {"sort": [{"field": "Plan"}]}},
+            {"id": "sortBy", "options": {"sort": [{"field": "Provider"}]}},
+        ],
+        "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}, "noValue": "–"},
+            "overrides": [
+                {"matcher": {"id": "byRegexp", "options": "/ capacity$/"}, "properties": [
+                    {"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 0},
+                    {"id": "noValue", "value": f"no sample ≥ {MIN_R:.0%}"}]},
+                {"matcher": {"id": "byName", "options": "Provider"}, "properties": [{"id": "mappings", "value": PROVIDER_MAPPING}]},
+            ]},
+        "options": {"showHeader": True, "cellHeight": "sm"}}
+
+def estimate_note(y, h):
+    text = ("**How the estimate works.** Providers report only the share of a window used. "
+        "Right after each quota fetch the exporter sums what sub2api logged for the key since that window started "
+        "(reset time minus 5h or 7 days, which also covers windows that start at first use); usage / share is one sample of the capacity. "
+        "Prometheus pools the samples (7 days for 5h, 28 days for weekly), and a plan's capacity is the highest among its accounts.\n\n"
+        "Values are **list-price USD**, not the provider's unit: a different model mix or peak-hour multipliers shift them. "
+        "Monthly windows are not estimated. The *per fetch* charts in History show how steady the samples are.")
+    return {"type": "text", "title": "", "id": nid(), "gridPos": {"h": h, "w": 12, "x": 12, "y": y},
+        "options": {"mode": "markdown", "content": text}}
+
+EST_PROVIDERS = [p for p in PROVIDERS if COUNTS.get(p[0], 0) > 0 and set(p[2]) & set(EST_WINDOWS)]
+if EST_WINDOWS and EST_PROVIDERS:
+    panels.append(row("Quota estimate", y)); y += 1
+    t = estimate_table(y, sum(COUNTS[p[0]] for p in EST_PROVIDERS))
+    panels.append(t); y += t["gridPos"]["h"]
+    plan = estimate_plan_table(y, max(2, len(EST_PROVIDERS)))
+    plan["gridPos"]["h"] = max(plan["gridPos"]["h"], 5)
+    panels += [plan, estimate_note(y, plan["gridPos"]["h"])]; y += plan["gridPos"]["h"]
+
+# ---- usage from sub2api usage_logs ----
+USAGE_WINDOWS = sorted({int(d) for d in args.usage_windows.split(",") if d.strip()})
 USAGE_DESC = ("From sub2api usage_logs: every account that served requests, grouped by provider "
     "(the quota provider for tracked accounts, otherwise the sub2api platform). "
     "Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens "
@@ -360,6 +521,29 @@ for i, w in enumerate(long_windows):
     panels.append(ratio_ts(f"{WINDOW_TITLE[w]} window used", w, i * (24 // len(long_windows)), y, 24 // len(long_windows), chart_h))
 if long_windows:
     y += chart_h
+
+def estimate_ts(window, x, w):
+    t = WINDOW_TITLE[window]
+    p = {"type": "timeseries", "title": f"{t} implied capacity · per-fetch samples (USD)", "datasource": DS, "id": nid(),
+        "description": (f"Capacity implied by each quota fetch alone: list-price USD logged since the {window} window started, "
+            f"divided by the share used (only at {MIN_R:.0%} used or more). Steady lines mean a steady estimate; "
+            "a line that drops suggests use of the key outside this sub2api, one that jumps a plan change."),
+        "gridPos": {"h": chart_h, "w": w, "x": x, "y": y},
+        "targets": [tgt(est_sample(window), "A", LEGEND)],
+        "fieldConfig": {"defaults": {"unit": "currencyUSD", "min": 0,
+            "color": {"mode": "palette-classic-by-name"}, "custom": dict(SERIES, showPoints="auto", pointSize=4)}, "overrides": []},
+        "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": True, "calcs": ["lastNotNull", "median"]},
+            "tooltip": {"mode": "multi", "sort": "desc"}}}
+    if window == "weekly":
+        p["timeFrom"] = "28d"  # the lookback of the weekly estimate
+    return p
+
+if EST_WINDOWS and EST_PROVIDERS:
+    est_present = [w for w in EST_WINDOWS if w in present]
+    for i, w in enumerate(est_present):
+        panels.append(estimate_ts(w, i * (24 // len(est_present)), 24 // len(est_present)))
+    if est_present:
+        y += chart_h
 
 def balance_ts(currency, x, who):
     return {"type": "timeseries", "title": f"Balance ({currency})", "datasource": DS, "id": nid(),
