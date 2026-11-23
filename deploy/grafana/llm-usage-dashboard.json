@@ -368,7 +368,7 @@
     {
       "type": "stat",
       "title": "sub2api DB",
-      "description": "Whether the exporter could read accounts from the sub2api database on its last reload.",
+      "description": "Whether the exporter's last reads of the sub2api database (accounts, and usage_logs for the usage panels) succeeded.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -386,7 +386,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max(llm_exporter_db_up{job=\"llm_usage\"})",
+          "expr": "max(llm_exporter_db_up{job=\"llm_usage\"}) * (max(llm_usage_up{job=\"llm_usage\"}) or vector(1))",
           "refId": "A",
           "legendFormat": "",
           "format": "time_series",
@@ -3263,15 +3263,15 @@
     },
     {
       "type": "table",
-      "title": "Usage by provider",
+      "title": "Usage by provider · trailing 1d / 7d / 30d",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "id": 15,
-      "description": "From sub2api usage_logs: every account that served requests, grouped by provider (the quota provider for tracked accounts, otherwise the sub2api platform). Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens (usage_logs.total_cost, USD) before any group rate multiplier. Windows are trailing, to the hour: 1d is this hour plus the 23 before it.",
+      "description": "From sub2api usage_logs: every account that served requests, grouped by provider (the quota provider for tracked accounts, otherwise the sub2api platform). Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens (usage_logs.total_cost, USD) before any group rate multiplier. These panels show fixed trailing windows and ignore the time picker. Windows are trailing, to the hour: 1d is this hour plus the 23 before it.",
       "gridPos": {
-        "h": 7,
+        "h": 9,
         "w": 24,
         "x": 0,
         "y": 23
@@ -3424,17 +3424,6 @@
               "Value #V30": "Value 30d"
             }
           }
-        },
-        {
-          "id": "sortBy",
-          "options": {
-            "sort": [
-              {
-                "field": "Value 30d",
-                "desc": true
-              }
-            ]
-          }
         }
       ],
       "fieldConfig": {
@@ -3445,7 +3434,7 @@
               "type": "auto"
             }
           },
-          "noValue": "0"
+          "noValue": "–"
         },
         "overrides": [
           {
@@ -3456,11 +3445,11 @@
             "properties": [
               {
                 "id": "unit",
-                "value": "short"
+                "value": "locale"
               },
               {
                 "id": "decimals",
-                "value": 1
+                "value": 0
               }
             ]
           },
@@ -3473,10 +3462,6 @@
               {
                 "id": "unit",
                 "value": "short"
-              },
-              {
-                "id": "decimals",
-                "value": 2
               }
             ]
           },
@@ -3495,12 +3480,104 @@
                 "value": 2
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Provider"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "zhipu": {
+                        "text": "GLM",
+                        "index": 0
+                      },
+                      "deepseek": {
+                        "text": "DeepSeek",
+                        "index": 1
+                      },
+                      "kimi": {
+                        "text": "Kimi",
+                        "index": 2
+                      },
+                      "minimax": {
+                        "text": "MiniMax",
+                        "index": 3
+                      },
+                      "opencode_go": {
+                        "text": "OpenCode Go",
+                        "index": 4
+                      },
+                      "command_code": {
+                        "text": "Command Code",
+                        "index": 5
+                      },
+                      "cline": {
+                        "text": "Cline",
+                        "index": 6
+                      },
+                      "anthropic": {
+                        "text": "Anthropic",
+                        "index": 7
+                      },
+                      "openai": {
+                        "text": "OpenAI",
+                        "index": 8
+                      },
+                      "gemini": {
+                        "text": "Gemini",
+                        "index": 9
+                      },
+                      "antigravity": {
+                        "text": "Antigravity",
+                        "index": 10
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Account"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 200
+              }
+            ]
           }
         ]
       },
       "options": {
         "showHeader": true,
-        "cellHeight": "sm"
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Value 30d",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": true,
+          "reducer": [
+            "sum"
+          ],
+          "fields": "",
+          "countRows": false
+        }
       }
     },
     {
@@ -3511,12 +3588,12 @@
         "uid": "prometheus"
       },
       "id": 16,
-      "description": "From sub2api usage_logs: every account that served requests, grouped by provider (the quota provider for tracked accounts, otherwise the sub2api platform). Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens (usage_logs.total_cost, USD) before any group rate multiplier. Hours and days start in the exporter's usage.timezone.",
+      "description": "From sub2api usage_logs: every account that served requests, grouped by provider (the quota provider for tracked accounts, otherwise the sub2api platform). Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens (usage_logs.total_cost, USD) before any group rate multiplier. These panels show fixed trailing windows and ignore the time picker. Hours and days start in the exporter's usage.timezone; the last bar is the current, unfinished one.",
       "gridPos": {
         "h": 9,
-        "w": 12,
+        "w": 16,
         "x": 0,
-        "y": 30
+        "y": 32
       },
       "targets": [
         {
@@ -3555,8 +3632,19 @@
         {
           "id": "organize",
           "options": {
-            "renameByName": {
-              "bucket\\provider": "Start"
+            "indexByName": {
+              "bucket\\provider": 0,
+              "zhipu": 1,
+              "deepseek": 2,
+              "kimi": 3,
+              "minimax": 4,
+              "opencode_go": 5,
+              "command_code": 6,
+              "cline": 7,
+              "anthropic": 8,
+              "openai": 9,
+              "gemini": 10,
+              "antigravity": 11
             }
           }
         }
@@ -3585,83 +3673,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "blue"
+                  "fixedColor": "#1f77b4"
                 }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "kimi"
-            },
-            "properties": [
+              },
               {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "purple"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "minimax"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "orange"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "opencode_go"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "green"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "command_code"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "yellow"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "cline"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "red"
-                }
+                "id": "displayName",
+                "value": "GLM"
               }
             ]
           },
@@ -3675,8 +3692,107 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "dark-blue"
+                  "fixedColor": "#17becf"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "DeepSeek"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "kimi"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#9467bd"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "Kimi"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "minimax"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#ff7f0e"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "MiniMax"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "opencode_go"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#2ca02c"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "OpenCode Go"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "command_code"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#bcbd22"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "Command Code"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cline"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d62728"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "Cline"
               }
             ]
           },
@@ -3690,8 +3806,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#d97757"
+                  "fixedColor": "#8c564b"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "Anthropic"
               }
             ]
           },
@@ -3705,8 +3825,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#10a37f"
+                  "fixedColor": "#7f7f7f"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "OpenAI"
               }
             ]
           },
@@ -3720,8 +3844,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#4285f4"
+                  "fixedColor": "#e377c2"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "Gemini"
               }
             ]
           },
@@ -3735,8 +3863,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#7c4dff"
+                  "fixedColor": "#393b79"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "Antigravity"
               }
             ]
           }
@@ -3745,20 +3877,22 @@
       "options": {
         "stacking": "normal",
         "orientation": "vertical",
-        "xField": "Start",
         "showValue": "never",
         "barWidth": 0.85,
-        "groupWidth": 0.8,
         "xTickLabelRotation": -45,
-        "xTickLabelSpacing": 0,
+        "xTickLabelSpacing": 100,
         "legend": {
           "showLegend": true,
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "calcs": [
+            "sum"
+          ]
         },
         "tooltip": {
           "mode": "multi",
-          "sort": "desc"
+          "sort": "desc",
+          "hideZeros": true
         }
       }
     },
@@ -3770,12 +3904,12 @@
         "uid": "prometheus"
       },
       "id": 17,
-      "description": "From sub2api usage_logs: every account that served requests, grouped by provider (the quota provider for tracked accounts, otherwise the sub2api platform). Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens (usage_logs.total_cost, USD) before any group rate multiplier. Hours and days start in the exporter's usage.timezone.",
+      "description": "From sub2api usage_logs: every account that served requests, grouped by provider (the quota provider for tracked accounts, otherwise the sub2api platform). Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens (usage_logs.total_cost, USD) before any group rate multiplier. These panels show fixed trailing windows and ignore the time picker. Hours and days start in the exporter's usage.timezone; the last bar is the current, unfinished one.",
       "gridPos": {
         "h": 9,
-        "w": 12,
-        "x": 12,
-        "y": 30
+        "w": 8,
+        "x": 16,
+        "y": 32
       },
       "targets": [
         {
@@ -3814,8 +3948,19 @@
         {
           "id": "organize",
           "options": {
-            "renameByName": {
-              "bucket\\provider": "Start"
+            "indexByName": {
+              "bucket\\provider": 0,
+              "zhipu": 1,
+              "deepseek": 2,
+              "kimi": 3,
+              "minimax": 4,
+              "opencode_go": 5,
+              "command_code": 6,
+              "cline": 7,
+              "anthropic": 8,
+              "openai": 9,
+              "gemini": 10,
+              "antigravity": 11
             }
           }
         }
@@ -3844,83 +3989,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "blue"
+                  "fixedColor": "#1f77b4"
                 }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "kimi"
-            },
-            "properties": [
+              },
               {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "purple"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "minimax"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "orange"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "opencode_go"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "green"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "command_code"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "yellow"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "cline"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "red"
-                }
+                "id": "displayName",
+                "value": "GLM"
               }
             ]
           },
@@ -3934,8 +4008,107 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "dark-blue"
+                  "fixedColor": "#17becf"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "DeepSeek"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "kimi"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#9467bd"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "Kimi"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "minimax"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#ff7f0e"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "MiniMax"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "opencode_go"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#2ca02c"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "OpenCode Go"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "command_code"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#bcbd22"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "Command Code"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cline"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d62728"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "Cline"
               }
             ]
           },
@@ -3949,8 +4122,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#d97757"
+                  "fixedColor": "#8c564b"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "Anthropic"
               }
             ]
           },
@@ -3964,8 +4141,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#10a37f"
+                  "fixedColor": "#7f7f7f"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "OpenAI"
               }
             ]
           },
@@ -3979,8 +4160,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#4285f4"
+                  "fixedColor": "#e377c2"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "Gemini"
               }
             ]
           },
@@ -3994,8 +4179,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#7c4dff"
+                  "fixedColor": "#393b79"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "Antigravity"
               }
             ]
           }
@@ -4004,20 +4193,22 @@
       "options": {
         "stacking": "normal",
         "orientation": "vertical",
-        "xField": "Start",
         "showValue": "never",
-        "barWidth": 0.85,
-        "groupWidth": 0.8,
+        "barWidth": 0.65,
         "xTickLabelRotation": 0,
         "xTickLabelSpacing": 0,
         "legend": {
           "showLegend": true,
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "calcs": [
+            "sum"
+          ]
         },
         "tooltip": {
           "mode": "multi",
-          "sort": "desc"
+          "sort": "desc",
+          "hideZeros": true
         }
       }
     },
@@ -4029,12 +4220,12 @@
         "uid": "prometheus"
       },
       "id": 18,
-      "description": "From sub2api usage_logs: every account that served requests, grouped by provider (the quota provider for tracked accounts, otherwise the sub2api platform). Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens (usage_logs.total_cost, USD) before any group rate multiplier. Hours and days start in the exporter's usage.timezone.",
+      "description": "From sub2api usage_logs: every account that served requests, grouped by provider (the quota provider for tracked accounts, otherwise the sub2api platform). Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens (usage_logs.total_cost, USD) before any group rate multiplier. These panels show fixed trailing windows and ignore the time picker. Hours and days start in the exporter's usage.timezone; the last bar is the current, unfinished one.",
       "gridPos": {
         "h": 9,
-        "w": 12,
+        "w": 16,
         "x": 0,
-        "y": 39
+        "y": 41
       },
       "targets": [
         {
@@ -4073,8 +4264,19 @@
         {
           "id": "organize",
           "options": {
-            "renameByName": {
-              "bucket\\provider": "Start"
+            "indexByName": {
+              "bucket\\provider": 0,
+              "zhipu": 1,
+              "deepseek": 2,
+              "kimi": 3,
+              "minimax": 4,
+              "opencode_go": 5,
+              "command_code": 6,
+              "cline": 7,
+              "anthropic": 8,
+              "openai": 9,
+              "gemini": 10,
+              "antigravity": 11
             }
           }
         }
@@ -4103,83 +4305,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "blue"
+                  "fixedColor": "#1f77b4"
                 }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "kimi"
-            },
-            "properties": [
+              },
               {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "purple"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "minimax"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "orange"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "opencode_go"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "green"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "command_code"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "yellow"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "cline"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "red"
-                }
+                "id": "displayName",
+                "value": "GLM"
               }
             ]
           },
@@ -4193,8 +4324,107 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "dark-blue"
+                  "fixedColor": "#17becf"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "DeepSeek"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "kimi"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#9467bd"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "Kimi"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "minimax"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#ff7f0e"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "MiniMax"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "opencode_go"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#2ca02c"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "OpenCode Go"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "command_code"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#bcbd22"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "Command Code"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cline"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d62728"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "Cline"
               }
             ]
           },
@@ -4208,8 +4438,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#d97757"
+                  "fixedColor": "#8c564b"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "Anthropic"
               }
             ]
           },
@@ -4223,8 +4457,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#10a37f"
+                  "fixedColor": "#7f7f7f"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "OpenAI"
               }
             ]
           },
@@ -4238,8 +4476,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#4285f4"
+                  "fixedColor": "#e377c2"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "Gemini"
               }
             ]
           },
@@ -4253,8 +4495,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#7c4dff"
+                  "fixedColor": "#393b79"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "Antigravity"
               }
             ]
           }
@@ -4263,20 +4509,22 @@
       "options": {
         "stacking": "normal",
         "orientation": "vertical",
-        "xField": "Start",
         "showValue": "never",
         "barWidth": 0.85,
-        "groupWidth": 0.8,
         "xTickLabelRotation": -45,
-        "xTickLabelSpacing": 0,
+        "xTickLabelSpacing": 100,
         "legend": {
           "showLegend": true,
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "calcs": [
+            "sum"
+          ]
         },
         "tooltip": {
           "mode": "multi",
-          "sort": "desc"
+          "sort": "desc",
+          "hideZeros": true
         }
       }
     },
@@ -4288,12 +4536,12 @@
         "uid": "prometheus"
       },
       "id": 19,
-      "description": "From sub2api usage_logs: every account that served requests, grouped by provider (the quota provider for tracked accounts, otherwise the sub2api platform). Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens (usage_logs.total_cost, USD) before any group rate multiplier. Hours and days start in the exporter's usage.timezone.",
+      "description": "From sub2api usage_logs: every account that served requests, grouped by provider (the quota provider for tracked accounts, otherwise the sub2api platform). Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens (usage_logs.total_cost, USD) before any group rate multiplier. These panels show fixed trailing windows and ignore the time picker. Hours and days start in the exporter's usage.timezone; the last bar is the current, unfinished one.",
       "gridPos": {
         "h": 9,
-        "w": 12,
-        "x": 12,
-        "y": 39
+        "w": 8,
+        "x": 16,
+        "y": 41
       },
       "targets": [
         {
@@ -4332,8 +4580,19 @@
         {
           "id": "organize",
           "options": {
-            "renameByName": {
-              "bucket\\provider": "Start"
+            "indexByName": {
+              "bucket\\provider": 0,
+              "zhipu": 1,
+              "deepseek": 2,
+              "kimi": 3,
+              "minimax": 4,
+              "opencode_go": 5,
+              "command_code": 6,
+              "cline": 7,
+              "anthropic": 8,
+              "openai": 9,
+              "gemini": 10,
+              "antigravity": 11
             }
           }
         }
@@ -4362,83 +4621,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "blue"
+                  "fixedColor": "#1f77b4"
                 }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "kimi"
-            },
-            "properties": [
+              },
               {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "purple"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "minimax"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "orange"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "opencode_go"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "green"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "command_code"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "yellow"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "cline"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "red"
-                }
+                "id": "displayName",
+                "value": "GLM"
               }
             ]
           },
@@ -4452,8 +4640,107 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "dark-blue"
+                  "fixedColor": "#17becf"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "DeepSeek"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "kimi"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#9467bd"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "Kimi"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "minimax"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#ff7f0e"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "MiniMax"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "opencode_go"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#2ca02c"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "OpenCode Go"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "command_code"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#bcbd22"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "Command Code"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cline"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d62728"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "Cline"
               }
             ]
           },
@@ -4467,8 +4754,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#d97757"
+                  "fixedColor": "#8c564b"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "Anthropic"
               }
             ]
           },
@@ -4482,8 +4773,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#10a37f"
+                  "fixedColor": "#7f7f7f"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "OpenAI"
               }
             ]
           },
@@ -4497,8 +4792,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#4285f4"
+                  "fixedColor": "#e377c2"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "Gemini"
               }
             ]
           },
@@ -4512,8 +4811,12 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#7c4dff"
+                  "fixedColor": "#393b79"
                 }
+              },
+              {
+                "id": "displayName",
+                "value": "Antigravity"
               }
             ]
           }
@@ -4522,20 +4825,22 @@
       "options": {
         "stacking": "normal",
         "orientation": "vertical",
-        "xField": "Start",
         "showValue": "never",
-        "barWidth": 0.85,
-        "groupWidth": 0.8,
+        "barWidth": 0.65,
         "xTickLabelRotation": 0,
         "xTickLabelSpacing": 0,
         "legend": {
           "showLegend": true,
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "calcs": [
+            "sum"
+          ]
         },
         "tooltip": {
           "mode": "multi",
-          "sort": "desc"
+          "sort": "desc",
+          "hideZeros": true
         }
       }
     },
@@ -4548,7 +4853,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 48
+        "y": 50
       },
       "panels": []
     },
@@ -4565,7 +4870,7 @@
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 49
+        "y": 51
       },
       "targets": [
         {
@@ -4651,7 +4956,7 @@
         "h": 14,
         "w": 12,
         "x": 0,
-        "y": 63
+        "y": 65
       },
       "targets": [
         {
@@ -4736,7 +5041,7 @@
         "h": 14,
         "w": 12,
         "x": 12,
-        "y": 63
+        "y": 65
       },
       "targets": [
         {
@@ -4821,7 +5126,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 77
+        "y": 79
       },
       "targets": [
         {
@@ -4882,7 +5187,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 77
+        "y": 79
       },
       "targets": [
         {
@@ -4939,7 +5244,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 84
+        "y": 86
       },
       "panels": []
     },
@@ -4956,7 +5261,7 @@
         "h": 22,
         "w": 24,
         "x": 0,
-        "y": 85
+        "y": 87
       },
       "targets": [
         {
@@ -5204,18 +5509,18 @@
     },
     {
       "type": "table",
-      "title": "Usage by account",
+      "title": "Usage by account · trailing 1d / 7d / 30d",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "id": 28,
-      "description": "From sub2api usage_logs: every account that served requests, grouped by provider (the quota provider for tracked accounts, otherwise the sub2api platform). Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens (usage_logs.total_cost, USD) before any group rate multiplier. Accounts with no requests in the longest window still show, with zeros.",
+      "description": "From sub2api usage_logs: every account that served requests, grouped by provider (the quota provider for tracked accounts, otherwise the sub2api platform). Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens (usage_logs.total_cost, USD) before any group rate multiplier. These panels show fixed trailing windows and ignore the time picker. Accounts with no requests in the longest window still show, with zeros.",
       "gridPos": {
-        "h": 12,
+        "h": 23,
         "w": 24,
         "x": 0,
-        "y": 107
+        "y": 109
       },
       "targets": [
         {
@@ -5356,7 +5661,6 @@
             "renameByName": {
               "provider": "Provider",
               "account_name": "Account",
-              "account_id": "Account id",
               "Value #Q1": "Requests 1d",
               "Value #T1": "Tokens 1d",
               "Value #V1": "Value 1d",
@@ -5368,17 +5672,6 @@
               "Value #V30": "Value 30d"
             }
           }
-        },
-        {
-          "id": "sortBy",
-          "options": {
-            "sort": [
-              {
-                "field": "Value 30d",
-                "desc": true
-              }
-            ]
-          }
         }
       ],
       "fieldConfig": {
@@ -5389,7 +5682,7 @@
               "type": "auto"
             }
           },
-          "noValue": "0"
+          "noValue": "–"
         },
         "overrides": [
           {
@@ -5400,11 +5693,11 @@
             "properties": [
               {
                 "id": "unit",
-                "value": "short"
+                "value": "locale"
               },
               {
                 "id": "decimals",
-                "value": 1
+                "value": 0
               }
             ]
           },
@@ -5417,10 +5710,6 @@
               {
                 "id": "unit",
                 "value": "short"
-              },
-              {
-                "id": "decimals",
-                "value": 2
               }
             ]
           },
@@ -5439,12 +5728,104 @@
                 "value": 2
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Provider"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "zhipu": {
+                        "text": "GLM",
+                        "index": 0
+                      },
+                      "deepseek": {
+                        "text": "DeepSeek",
+                        "index": 1
+                      },
+                      "kimi": {
+                        "text": "Kimi",
+                        "index": 2
+                      },
+                      "minimax": {
+                        "text": "MiniMax",
+                        "index": 3
+                      },
+                      "opencode_go": {
+                        "text": "OpenCode Go",
+                        "index": 4
+                      },
+                      "command_code": {
+                        "text": "Command Code",
+                        "index": 5
+                      },
+                      "cline": {
+                        "text": "Cline",
+                        "index": 6
+                      },
+                      "anthropic": {
+                        "text": "Anthropic",
+                        "index": 7
+                      },
+                      "openai": {
+                        "text": "OpenAI",
+                        "index": 8
+                      },
+                      "gemini": {
+                        "text": "Gemini",
+                        "index": 9
+                      },
+                      "antigravity": {
+                        "text": "Antigravity",
+                        "index": 10
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Account"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 200
+              }
+            ]
           }
         ]
       },
       "options": {
         "showHeader": true,
-        "cellHeight": "sm"
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Value 30d",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": true,
+          "reducer": [
+            "sum"
+          ],
+          "fields": "",
+          "countRows": false
+        }
       }
     },
     {
@@ -5460,7 +5841,7 @@
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 119
+        "y": 132
       },
       "targets": [
         {
