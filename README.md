@@ -41,7 +41,9 @@ accounts:
   - `kind="total"`：等价价值，即 Token 按模型标价计算的费用（`total_cost`，未乘分组倍率）；
   - `kind="actual"`：sub2api 向用户实际扣费（`actual_cost`，已乘分组倍率）；
   - `kind="account"`：账号侧成本，与 sub2api 看板的“账号成本”算法相同：`COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1)`。
-- 内存里按“账号 × 小时”缓存。启动时和每 `resync_interval` 读一次完整区间；其间每 `interval` 只重读最近 `lookback`（向下取整到整点）。
+- 内存里按“账号 × 小时”缓存。sub2api 在记录请求时才写入 `created_at`，过去的小时不会再变，所以只在启动时读一次完整区间，其后每 `interval` 只重读最近 `lookback`（向下取整到整点）。
+  每 `resync_interval`（默认 24 小时）再读一次完整区间，只为去掉其间被删除的记录（用量清理、删除账号）。
+- 数据库压力（实测 sub2api 主库，30 天约 83 万行）：增量查询约 3 ms；完整区间读取约 1 秒，走 `created_at` 索引，只在启动和每次 resync 时发生。Prometheus 抓取只读内存。
 - 窗口按小时对齐：`1d` 是当前小时加之前 23 个小时。小时和天的起点按 `usage.timezone`。
 - 读失败时保留上次的值，`llm_usage_up` 为 0。
 

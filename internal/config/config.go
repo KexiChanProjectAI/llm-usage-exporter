@@ -64,8 +64,9 @@ type Usage struct {
 	// Lookback is how far back a regular read goes (rounded down to the
 	// hour); it catches rows written late, e.g. long streams.
 	Lookback time.Duration `yaml:"lookback"`
-	// ResyncInterval is how often the whole span is read again, which also
-	// drops rows sub2api has deleted since.
+	// ResyncInterval is how often the whole span is read again. Past hours do
+	// not change (sub2api stamps a row when it records it), so this only
+	// drops rows deleted since, e.g. by a usage cleanup or an account delete.
 	ResyncInterval time.Duration `yaml:"resync_interval"`
 	QueryTimeout   time.Duration `yaml:"query_timeout"`
 	// Windows are the trailing windows, in days, of the per-account metrics.
@@ -256,7 +257,7 @@ func (c *Config) applyDefaults() {
 		u.Lookback = time.Hour
 	}
 	if u.ResyncInterval == 0 {
-		u.ResyncInterval = 6 * time.Hour
+		u.ResyncInterval = 24 * time.Hour
 	}
 	if u.QueryTimeout == 0 {
 		u.QueryTimeout = time.Minute
