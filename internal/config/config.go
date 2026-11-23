@@ -53,7 +53,34 @@ type Config struct {
 	Accounts      []StaticAccount           `yaml:"accounts"`
 	AuthBlacklist AuthBlacklist             `yaml:"auth_blacklist"`
 	Providers     map[string]ProviderConfig `yaml:"providers"`
+	Usage         Usage                     `yaml:"usage"`
 }
+
+// Usage configures the token usage and cost read from sub2api's usage_logs.
+type Usage struct {
+	Enabled *bool `yaml:"enabled"`
+	// Interval between reads of the last Lookback of usage_logs.
+	Interval time.Duration `yaml:"interval"`
+	// Lookback is how far back a regular read goes (rounded down to the
+	// hour); it catches rows written late, e.g. long streams.
+	Lookback time.Duration `yaml:"lookback"`
+	// ResyncInterval is how often the whole span is read again, which also
+	// drops rows sub2api has deleted since.
+	ResyncInterval time.Duration `yaml:"resync_interval"`
+	QueryTimeout   time.Duration `yaml:"query_timeout"`
+	// Windows are the trailing windows, in days, of the per-account metrics.
+	Windows []int `yaml:"windows"`
+	// HourlyBuckets and DailyBuckets are how many hours and days (including
+	// the current one) the per-provider bucket metrics cover.
+	HourlyBuckets int `yaml:"hourly_buckets"`
+	DailyBuckets  int `yaml:"daily_buckets"`
+	// Timezone (IANA name) in which hours and days start and bucket labels
+	// are written.
+	Timezone string `yaml:"timezone"`
+}
+
+// IsEnabled reports whether usage collection is enabled (default true).
+func (u Usage) IsEnabled() bool { return u.Enabled == nil || *u.Enabled }
 
 type Database struct {
 	DSN            string        `yaml:"dsn"`
@@ -221,6 +248,31 @@ func (c *Config) applyDefaults() {
 	if c.AuthBlacklist.StatusCodes == nil {
 		c.AuthBlacklist.StatusCodes = []int{401}
 	}
+	u := &c.Usage
+	if u.Interval == 0 {
+		u.Interval = 5 * time.Minute
+	}
+	if u.Lookback == 0 {
+		u.Lookback = time.Hour
+	}
+	if u.ResyncInterval == 0 {
+		u.ResyncInterval = 6 * time.Hour
+	}
+	if u.QueryTimeout == 0 {
+		u.QueryTimeout = time.Minute
+	}
+	if u.Windows == nil {
+		u.Windows = []int{1, 7, 30}
+	}
+	if u.HourlyBuckets == 0 {
+		u.HourlyBuckets = 24
+	}
+	if u.DailyBuckets == 0 {
+		u.DailyBuckets = 7
+	}
+	if u.Timezone == "" {
+		u.Timezone = "UTC"
+	}
 	if c.Providers == nil {
 		c.Providers = map[string]ProviderConfig{}
 	}
@@ -251,6 +303,9 @@ func (c *Config) validate() error {
 	}
 	if err := ValidateProxy(c.Proxy); err != nil {
 		return fmt.Errorf("proxy: %w", err)
+	}
+	if err := c.Usage.validate(); err != nil {
+		return err
 	}
 	known := map[string]bool{}
 	for _, id := range Providers {
@@ -286,6 +341,35 @@ func (c *Config) validate() error {
 		if err := ValidateProxy(p.Proxy); err != nil {
 			return fmt.Errorf("providers.%s.proxy: %w", id, err)
 		}
+	}
+	return nil
+}
+
+func (u *Usage) validate() error {
+	if u.Interval < time.Minute {
+		return fmt.Errorf("usage.interval must be >= 1m")
+	}
+	if u.Lookback < 0 || u.ResyncInterval < u.Interval || u.QueryTimeout <= 0 {
+		return fmt.Errorf("usage: lookback must not be negative, resync_interval must be >= interval and query_timeout > 0")
+	}
+	seen := map[int]bool{}
+	for _, d := range u.Windows {
+		if d < 1 || d > 366 {
+			return fmt.Errorf("usage.windows: %d days is out of range (1-366)", d)
+		}
+		if seen[d] {
+			return fmt.Errorf("usage.windows: duplicate %d", d)
+		}
+		seen[d] = true
+	}
+	if u.HourlyBuckets < 1 || u.HourlyBuckets > 24*31 {
+		return fmt.Errorf("usage.hourly_buckets must be 1-744")
+	}
+	if u.DailyBuckets < 1 || u.DailyBuckets > 366 {
+		return fmt.Errorf("usage.daily_buckets must be 1-366")
+	}
+	if _, err := time.LoadLocation(u.Timezone); err != nil || u.Timezone == "Local" {
+		return fmt.Errorf("usage.timezone: %q is not an IANA time zone name", u.Timezone)
 	}
 	return nil
 }

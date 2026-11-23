@@ -69,3 +69,29 @@ func TestStaticAccounts(t *testing.T) {
 		require.Error(t, err, name)
 	}
 }
+
+func TestUsage(t *testing.T) {
+	cfg, err := Parse([]byte("database: {dsn: x}\n"))
+	require.NoError(t, err)
+	u := cfg.Usage
+	require.True(t, u.IsEnabled())
+	require.Equal(t, []int{1, 7, 30}, u.Windows)
+	require.Equal(t, 24, u.HourlyBuckets)
+	require.Equal(t, 7, u.DailyBuckets)
+	require.Equal(t, "UTC", u.Timezone)
+	require.Equal(t, 5*time.Minute, u.Interval)
+
+	bad := map[string]string{
+		"tz":       "usage: {timezone: Mars/Base}",
+		"local tz": "usage: {timezone: Local}",
+		"window 0": "usage: {windows: [0]}",
+		"dup":      "usage: {windows: [7, 7]}",
+		"interval": "usage: {interval: 10s}",
+		"resync":   "usage: {interval: 10m, resync_interval: 5m}",
+		"buckets":  "usage: {hourly_buckets: -1}",
+	}
+	for name, doc := range bad {
+		_, err := Parse([]byte("database: {dsn: x}\n" + doc + "\n"))
+		require.Error(t, err, name)
+	}
+}

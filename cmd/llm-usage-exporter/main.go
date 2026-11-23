@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // usage.timezone on hosts without a zoneinfo database
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,6 +22,7 @@ import (
 	"github.com/KexiChanProjectAI/llm-usage-exporter/internal/config"
 	"github.com/KexiChanProjectAI/llm-usage-exporter/internal/provider"
 	"github.com/KexiChanProjectAI/llm-usage-exporter/internal/source"
+	"github.com/KexiChanProjectAI/llm-usage-exporter/internal/usage"
 )
 
 var version = "dev"
@@ -73,7 +75,7 @@ func run(configPath string, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("parse database.dsn: %w", err) // pgx errors do not echo the password
 	}
-	poolCfg.MaxConns = 2
+	poolCfg.MaxConns = 3
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
@@ -96,6 +98,15 @@ func run(configPath string, log *slog.Logger) error {
 	}
 	registerer.MustRegister(exp, collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
+	var usageCol *usage.Collector
+	if cfg.Usage.IsEnabled() {
+		usageCol, err = usage.New(cfg.Usage, usage.DBSource{DB: pool}, exp.AccountProviders, log)
+		if err != nil {
+			return err
+		}
+		registerer.MustRegister(usageCol)
+	}
+
 	mux := http.NewServeMux()
 	mux.Handle(cfg.MetricsPath, promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -111,6 +122,13 @@ func run(configPath string, log *slog.Logger) error {
 	go func() {
 		defer close(done)
 		exp.Run(ctx)
+	}()
+	usageDone := make(chan struct{})
+	go func() {
+		defer close(usageDone)
+		if usageCol != nil {
+			usageCol.Run(ctx)
+		}
 	}()
 
 	srvErr := make(chan error, 1)
@@ -131,5 +149,6 @@ func run(configPath string, log *slog.Logger) error {
 	defer cancel()
 	_ = srv.Shutdown(shutdownCtx)
 	<-done
+	<-usageDone
 	return err
 }
