@@ -78,10 +78,19 @@ type Usage struct {
 	// Timezone (IANA name) in which hours and days start and bucket labels
 	// are written.
 	Timezone string `yaml:"timezone"`
+	// QuotaWindows reads, after each quota fetch, what sub2api logged for the
+	// account since its 5h and weekly windows started
+	// (llm_quota_window_consumed). Default true; needs Enabled.
+	QuotaWindows *bool `yaml:"quota_windows"`
 }
 
 // IsEnabled reports whether usage collection is enabled (default true).
 func (u Usage) IsEnabled() bool { return u.Enabled == nil || *u.Enabled }
+
+// QuotaWindowsEnabled reports whether llm_quota_window_consumed is exported.
+func (u Usage) QuotaWindowsEnabled() bool {
+	return u.IsEnabled() && (u.QuotaWindows == nil || *u.QuotaWindows)
+}
 
 type Database struct {
 	DSN            string        `yaml:"dsn"`

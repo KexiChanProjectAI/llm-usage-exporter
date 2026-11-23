@@ -53,6 +53,51 @@ accounts:
 GRANT SELECT ON usage_logs TO llm_usage_exporter;
 ```
 
+## 额度估计
+
+提供商只报告每个窗口用了百分之几，不报告窗口有多大。
+把 sub2api 在窗口内实际记下的用量（按标价折算的美元）除以已用比例，就得到窗口容量的估计，进而得到剩余额度。
+
+### exporter 做的部分
+
+每次额度查询成功后，立即读一次 `usage_logs`，得到该 Key 从窗口起点到查询时刻的用量，导出为 `llm_quota_window_consumed`，与同一次查询的 `llm_quota_used_ratio` 配对。
+
+- 窗口起点 = 重置时间 − 窗口长度（`5h` 为 5 小时，`weekly` 为 7 天）。
+  无论窗口按固定时刻滚动（MiniMax：所有账号同一时刻重置），还是在上一个窗口结束后、第一次请求时才开始（GLM：空闲的 5h 窗口报 0% 且没有重置时间），重置于 R 的窗口都开始于 R 减窗口长度，所以不需要知道是哪一种。
+- 没有重置时间（窗口还没开始）、或重置时间比查询时刻晚出一个以上的窗口长度（长度不符）时，不导出。
+  窗口在查询前已经结束时，用量只算到重置时间。
+- `monthly` 不估计：按自然月、30 天还是账单周期，各家不同。
+- 同一 Key 的多个 sub2api 账号合计（它们共用一份额度）；配置文件里的账号在 `usage_logs` 里没有记录，不导出。
+- 每次查询一条 SQL，走 `(account_id, created_at)` 索引；实测主库 7 天窗口约 2 ms。由 `usage.quota_windows` 控制（默认开启，需要 `usage.enabled`）。
+
+### Prometheus / Grafana 做的部分
+
+除法和跨窗口的平滑放在 Prometheus 的记录规则里（`deploy/prometheus/rules-llm-quota-estimate.yaml`，每 5 分钟计算一次），看板只读记录下的序列：
+
+- 每次查询是一个样本：容量 ≈ 已记用量 ÷ 已用比例。
+  `llm_quota:window_capacity_usd:estimate` 是账号在回看区间内的 `sum(用量) / sum(比例)`，相当于按比例加权，后期、精确的样本权重大；已用不到 10% 的样本丢弃（GLM 只报整数百分比）；结果为 0（本 sub2api 没有记录）不算估计。
+  回看区间：5h 窗口 7 天，weekly 28 天。改这些参数只需改规则文件。
+- 同一 Key 在本 sub2api 之外的使用（另一个 sub2api、个人、其他工具）会抬高已用比例，却没有 `usage_logs` 记录，只会把估计压低。
+  同一套餐的账号容量相同，所以 `llm_quota:plan_capacity_usd:max` 取同一 `provider` + `plan` 下各账号估计的最大值；不报套餐名的提供商（如 Kimi）用账号自己的估计。
+- 剩余 = 套餐容量 × (1 − 已用比例)，这与谁用掉的无关；已用 100% 的窗口在没有估计时也记为 0。
+  “Usable now”取各窗口剩余的最小值，只在账号的每个 5h / weekly 窗口都有估计时显示；任一窗口（包括 monthly）用尽时为 0。
+- “Via sub2api” = 账号自己的 weekly 估计 ÷ 套餐容量；明显低于 100% 说明 Key 在别处也在用。
+
+局限：估计的单位是 Token 的标价，不是提供商自己的计量。模型组合变化、高峰时段倍率等都会让同样的标价对应不同的额度消耗，提供商统计滞后也会让刚发生的请求暂时被高估。
+看板 History 里的“implied capacity · per-fetch samples”曲线是每次查询单独算出的容量，曲线平稳才说明估计可信。
+
+### 为什么这样分工
+
+| | 在 exporter 里 | 在 Prometheus 里 |
+|---|---|---|
+| 窗口起点各账号不同，且随首次使用变化 | 有重置时间和数据库，按秒精确求和 | PromQL 的区间长度只能是常量，按序列变化的起点做不到；用计数器差值近似要受抓取间隔、重启归零和递归记录规则的限制 |
+| 与已用比例配对 | 在同一次查询后立即读，天然对齐 | 两个指标各自刷新，对不齐 |
+| 跨窗口的历史 | 要自己持久化状态，重启即丢 | 已有 180 天保留，重启无影响 |
+| 估计方法（最小比例、回看区间、套餐取最大值） | 改了要重新部署 | 只改规则文件，可随时调整、回溯 |
+
+所以：需要数据库和重置时间的“窗口内用量”在 exporter 里算；除法、平滑和跨账号比较在 Prometheus 里算。
+7 天 / 28 天的子查询放在记录规则里每 5 分钟算一次，而不是在看板里每次刷新都算（公开看板每个访客每 30 秒刷新一次）。
+
 ## 代理
 
 优先级从高到低：
@@ -89,6 +134,8 @@ Anthropic 协议的账号只在 base_url 是官方 `api.deepseek.com` 时查询�
 |---|---|---|
 | `llm_quota_used_ratio` | `window` | 已用比例，0–1，可能超过 1 |
 | `llm_quota_reset_timestamp_seconds` | `window` | 窗口重置时间 |
+| `llm_quota_window_start_timestamp_seconds` | `window` | 当前窗口的起点：重置时间减窗口长度（只有 `5h`、`weekly`） |
+| `llm_quota_window_consumed` | `window`, `unit` | 从窗口起点到这次额度查询，sub2api 为该 Key 记下的用量（`usage_logs`）；`unit` 为 `usd`（标价）、`tokens`、`requests`。见“额度估计” |
 | `llm_quota_window_used` / `llm_quota_window_limit` | `window`, `unit` | 绝对用量（Command Code 为 `usd`，Kimi 老套餐为 `count`） |
 | `llm_quota_balance` | `kind`, `currency` | 余额（Command Code、Cline、DeepSeek）；`kind` 为 `total`、`monthly`、`purchased`、`free`、`granted`、`topped_up` |
 | `llm_quota_balance_available` | | DeepSeek 的 `is_available`：余额是否可用 |
@@ -155,6 +202,7 @@ ALTER ROLE llm_usage_exporter SET default_transaction_read_only = on;
 
 - `deploy/systemd/llm-usage-exporter.service`：以专用用户运行，数据库密码放在 `EnvironmentFile`（`SUB2API_DB_PASSWORD=...`，权限 0640）。
 - `deploy/prometheus/scrape-llm-usage.yaml`：追加到 `prometheus.yml` 的 `scrape_configs`。
+- `deploy/prometheus/rules-llm-quota-estimate.yaml`：额度估计的记录规则，加到 `prometheus.yml` 的 `rule_files`。
 - `deploy/grafana/llm-usage-dashboard.json`：Grafana 看板，由 `gen_dashboard.py` 生成。
 - `deploy/grafana/provisioning-llm-usage.yaml`：Grafana 文件方式加载看板的配置。
 - `deploy/nginx/redirect-to-public-dashboard.conf.example`：用一个短域名 302 到公开看板。
@@ -162,8 +210,9 @@ ALTER ROLE llm_usage_exporter SET default_transaction_read_only = on;
 ## Grafana 看板
 
 看板没有模板变量，因此可以直接设为 Grafana 公开看板（public dashboard 不支持模板变量）。
-包含：总览状态块、当前额度表、Token 用量与等价价值（按提供商的窗口汇总表，最近 24 小时和 7 天的堆叠柱状图，每个提供商一种颜色，以及按账号的明细表）、5h / 周 / 月用量曲线、查询状态时间线和余额曲线。
+包含：总览状态块、当前额度表、额度估计（套餐容量和每个账号的估计剩余，见“额度估计”）、Token 用量与等价价值（按提供商的窗口汇总表，最近 24 小时和 7 天的堆叠柱状图，每个提供商一种颜色，以及按账号的明细表）、5h / 周 / 月用量曲线、查询状态时间线和余额曲线。
 `--usage-windows` 要与 exporter 的 `usage.windows` 一致（默认 `1,7,30`），传空字符串则不画用量部分。
+`--estimate-windows`（默认 `5h,weekly`）选择要估计的窗口，传空字符串则不画估计部分；需要 exporter 开启 `usage.quota_windows`，Prometheus 加载估计的记录规则。
 
 数据源 uid、标题和 Prometheus job 名可以在生成时指定：
 

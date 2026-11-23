@@ -3250,7 +3250,7 @@
     },
     {
       "type": "row",
-      "title": "Usage (sub2api usage_logs)",
+      "title": "Quota estimate",
       "id": 14,
       "collapsed": false,
       "gridPos": {
@@ -3263,18 +3263,680 @@
     },
     {
       "type": "table",
-      "title": "Usage by provider · trailing 1d / 7d / 30d",
+      "title": "Estimated quota left · list-price USD",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "id": 15,
+      "description": "Estimated quota left, in list-price USD (what the tokens would cost at list price, not the provider's own unit). Usable now is the smallest window left; it shows once every 5h/Weekly window of the account has an estimate, and is $0 when any window, monthly included, is used up. Left = plan capacity x (1 - share used). Via sub2api compares the account's own Weekly estimate with its plan's: well under 100% means the key is also used outside this sub2api. – means no estimate yet (no sample at 10% used or more in the lookback). See README, 额度估计.",
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_account_info{job=\"llm_usage\"}) and on (provider, account_id, account_name) max by (provider, account_id, account_name) (llm_quota_used_ratio{window=~\"5h|weekly\", job=\"llm_usage\"})",
+          "refId": "K",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name, plan) (llm_quota_plan_info{plan!=\"\", job=\"llm_usage\"})",
+          "refId": "J",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(0 * (max by (provider, account_id, account_name) (llm_quota_used_ratio{job=\"llm_usage\"}) >= 1)) or (min by (provider, account_id, account_name) (label_replace((max by (provider, account_id, account_name) ((max by (provider, account_id, account_name, plan) (llm_quota_plan_info{plan!=\"\", job=\"llm_usage\"}) * on (provider, plan) group_left () max by (provider, plan) (llm_quota:plan_capacity_usd:max{window=\"5h\", job=\"llm_usage\"})) or (max by (provider, account_id, account_name) (llm_quota:window_capacity_usd:estimate{window=\"5h\", job=\"llm_usage\"}) unless on (provider, account_id, account_name) max by (provider, account_id, account_name, plan) (llm_quota_plan_info{plan!=\"\", job=\"llm_usage\"}))) * clamp_min(1 - max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"5h\", job=\"llm_usage\"}), 0)) or (0 * (max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"5h\", job=\"llm_usage\"}) >= 1)), \"est_window\", \"5h\", \"\", \"\") or label_replace((max by (provider, account_id, account_name) ((max by (provider, account_id, account_name, plan) (llm_quota_plan_info{plan!=\"\", job=\"llm_usage\"}) * on (provider, plan) group_left () max by (provider, plan) (llm_quota:plan_capacity_usd:max{window=\"weekly\", job=\"llm_usage\"})) or (max by (provider, account_id, account_name) (llm_quota:window_capacity_usd:estimate{window=\"weekly\", job=\"llm_usage\"}) unless on (provider, account_id, account_name) max by (provider, account_id, account_name, plan) (llm_quota_plan_info{plan!=\"\", job=\"llm_usage\"}))) * clamp_min(1 - max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"weekly\", job=\"llm_usage\"}), 0)) or (0 * (max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"weekly\", job=\"llm_usage\"}) >= 1)), \"est_window\", \"weekly\", \"\", \"\")) unless on (provider, account_id, account_name) (((max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"5h\", job=\"llm_usage\"}) < 1) unless on (provider, account_id, account_name) max by (provider, account_id, account_name) ((max by (provider, account_id, account_name, plan) (llm_quota_plan_info{plan!=\"\", job=\"llm_usage\"}) * on (provider, plan) group_left () max by (provider, plan) (llm_quota:plan_capacity_usd:max{window=\"5h\", job=\"llm_usage\"})) or (max by (provider, account_id, account_name) (llm_quota:window_capacity_usd:estimate{window=\"5h\", job=\"llm_usage\"}) unless on (provider, account_id, account_name) max by (provider, account_id, account_name, plan) (llm_quota_plan_info{plan!=\"\", job=\"llm_usage\"})))) or ((max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"weekly\", job=\"llm_usage\"}) < 1) unless on (provider, account_id, account_name) max by (provider, account_id, account_name) ((max by (provider, account_id, account_name, plan) (llm_quota_plan_info{plan!=\"\", job=\"llm_usage\"}) * on (provider, plan) group_left () max by (provider, plan) (llm_quota:plan_capacity_usd:max{window=\"weekly\", job=\"llm_usage\"})) or (max by (provider, account_id, account_name) (llm_quota:window_capacity_usd:estimate{window=\"weekly\", job=\"llm_usage\"}) unless on (provider, account_id, account_name) max by (provider, account_id, account_name, plan) (llm_quota_plan_info{plan!=\"\", job=\"llm_usage\"}))))))",
+          "refId": "N",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max by (provider, account_id, account_name) ((max by (provider, account_id, account_name, plan) (llm_quota_plan_info{plan!=\"\", job=\"llm_usage\"}) * on (provider, plan) group_left () max by (provider, plan) (llm_quota:plan_capacity_usd:max{window=\"5h\", job=\"llm_usage\"})) or (max by (provider, account_id, account_name) (llm_quota:window_capacity_usd:estimate{window=\"5h\", job=\"llm_usage\"}) unless on (provider, account_id, account_name) max by (provider, account_id, account_name, plan) (llm_quota_plan_info{plan!=\"\", job=\"llm_usage\"}))) * clamp_min(1 - max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"5h\", job=\"llm_usage\"}), 0)) or (0 * (max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"5h\", job=\"llm_usage\"}) >= 1))",
+          "refId": "L5h",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"5h\", job=\"llm_usage\"})",
+          "refId": "U5h",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max by (provider, account_id, account_name) ((max by (provider, account_id, account_name, plan) (llm_quota_plan_info{plan!=\"\", job=\"llm_usage\"}) * on (provider, plan) group_left () max by (provider, plan) (llm_quota:plan_capacity_usd:max{window=\"weekly\", job=\"llm_usage\"})) or (max by (provider, account_id, account_name) (llm_quota:window_capacity_usd:estimate{window=\"weekly\", job=\"llm_usage\"}) unless on (provider, account_id, account_name) max by (provider, account_id, account_name, plan) (llm_quota_plan_info{plan!=\"\", job=\"llm_usage\"}))) * clamp_min(1 - max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"weekly\", job=\"llm_usage\"}), 0)) or (0 * (max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"weekly\", job=\"llm_usage\"}) >= 1))",
+          "refId": "Lweekly",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"weekly\", job=\"llm_usage\"})",
+          "refId": "Uweekly",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota:window_capacity_usd:estimate{window=\"weekly\", job=\"llm_usage\"}) / on (provider, account_id, account_name) max by (provider, account_id, account_name) (max by (provider, account_id, account_name, plan) (llm_quota_plan_info{plan!=\"\", job=\"llm_usage\"}) * on (provider, plan) group_left () max by (provider, plan) (llm_quota:plan_capacity_usd:max{window=\"weekly\", job=\"llm_usage\"}))",
+          "refId": "V",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "account_id": true,
+              "Value #K": true,
+              "Value #J": true
+            },
+            "indexByName": {
+              "provider": 0,
+              "account_name": 1,
+              "plan": 2,
+              "Value #N": 3,
+              "Value #L5h": 4,
+              "Value #U5h": 5,
+              "Value #Lweekly": 6,
+              "Value #Uweekly": 7,
+              "Value #V": 8
+            },
+            "renameByName": {
+              "provider": "Provider",
+              "account_name": "Account",
+              "plan": "Plan",
+              "Value #N": "Usable now",
+              "Value #L5h": "5h left",
+              "Value #U5h": "5h used",
+              "Value #Lweekly": "Weekly left",
+              "Value #Uweekly": "Weekly used",
+              "Value #V": "Via sub2api"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "–"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ used$/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.7
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ left$|^Usable now$/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "text",
+                      "value": 0.5
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Usable now"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text",
+                  "wrapText": false
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Via sub2api"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "orange",
+                      "value": null
+                    },
+                    {
+                      "color": "text",
+                      "value": 0.8
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Provider"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "zhipu": {
+                        "text": "GLM",
+                        "index": 0
+                      },
+                      "deepseek": {
+                        "text": "DeepSeek",
+                        "index": 1
+                      },
+                      "kimi": {
+                        "text": "Kimi",
+                        "index": 2
+                      },
+                      "minimax": {
+                        "text": "MiniMax",
+                        "index": 3
+                      },
+                      "opencode_go": {
+                        "text": "OpenCode Go",
+                        "index": 4
+                      },
+                      "command_code": {
+                        "text": "Command Code",
+                        "index": 5
+                      },
+                      "cline": {
+                        "text": "Cline",
+                        "index": 6
+                      },
+                      "anthropic": {
+                        "text": "Anthropic",
+                        "index": 7
+                      },
+                      "openai": {
+                        "text": "OpenAI",
+                        "index": 8
+                      },
+                      "gemini": {
+                        "text": "Gemini",
+                        "index": 9
+                      },
+                      "antigravity": {
+                        "text": "Antigravity",
+                        "index": 10
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Account"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 170
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Plan"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Account",
+            "desc": false
+          }
+        ]
+      }
+    },
+    {
+      "type": "table",
+      "title": "Estimated plan capacity · list-price USD",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "id": 16,
+      "description": "Estimated capacity of each plan's windows, in list-price USD: the highest estimate among the plan's accounts, since use of a key outside this sub2api only lowers an account's estimate. Providers that report no plan name (e.g. Kimi) are estimated per account and not listed here. A different model mix or peak-hour multipliers shift these values.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 43
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count by (provider, plan) (max by (provider, account_id, account_name, plan) (llm_quota_plan_info{plan!=\"\", job=\"llm_usage\"}) and on (provider, account_id, account_name) max by (provider, account_id, account_name) (llm_quota_used_ratio{window=~\"5h|weekly\", job=\"llm_usage\"}))",
+          "refId": "K",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, plan) (llm_quota:plan_capacity_usd:max{window=\"5h\", job=\"llm_usage\"})",
+          "refId": "P5h",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, plan) (llm_quota:plan_capacity_usd:max{window=\"weekly\", job=\"llm_usage\"})",
+          "refId": "Pweekly",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "provider": 0,
+              "plan": 1,
+              "Value #K": 2,
+              "Value #P5h": 3,
+              "Value #Pweekly": 4
+            },
+            "renameByName": {
+              "provider": "Provider",
+              "plan": "Plan",
+              "Value #K": "Accounts",
+              "Value #P5h": "5h capacity",
+              "Value #Pweekly": "Weekly capacity"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Plan"
+              }
+            ]
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Provider"
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "–"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ capacity$/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "noValue",
+                "value": "no sample ≥ 10%"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Provider"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "zhipu": {
+                        "text": "GLM",
+                        "index": 0
+                      },
+                      "deepseek": {
+                        "text": "DeepSeek",
+                        "index": 1
+                      },
+                      "kimi": {
+                        "text": "Kimi",
+                        "index": 2
+                      },
+                      "minimax": {
+                        "text": "MiniMax",
+                        "index": 3
+                      },
+                      "opencode_go": {
+                        "text": "OpenCode Go",
+                        "index": 4
+                      },
+                      "command_code": {
+                        "text": "Command Code",
+                        "index": 5
+                      },
+                      "cline": {
+                        "text": "Cline",
+                        "index": 6
+                      },
+                      "anthropic": {
+                        "text": "Anthropic",
+                        "index": 7
+                      },
+                      "openai": {
+                        "text": "OpenAI",
+                        "index": 8
+                      },
+                      "gemini": {
+                        "text": "Gemini",
+                        "index": 9
+                      },
+                      "antigravity": {
+                        "text": "Antigravity",
+                        "index": 10
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "type": "text",
+      "title": "",
+      "id": 17,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 43
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**How the estimate works.** Providers report only the share of a window used. Right after each quota fetch the exporter sums what sub2api logged for the key since that window started (reset time minus 5h or 7 days, which also covers windows that start at first use); usage / share is one sample of the capacity. Prometheus pools the samples (7 days for 5h, 28 days for weekly), and a plan's capacity is the highest among its accounts.\n\nValues are **list-price USD**, not the provider's unit: a different model mix or peak-hour multipliers shift them. Monthly windows are not estimated. The *per fetch* charts in History show how steady the samples are."
+      }
+    },
+    {
+      "type": "row",
+      "title": "Usage (sub2api usage_logs)",
+      "id": 18,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 51
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Usage by provider · trailing 1d / 7d / 30d",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "id": 19,
       "description": "From sub2api usage_logs: every account that served requests, grouped by provider (the quota provider for tracked accounts, otherwise the sub2api platform). Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens (usage_logs.total_cost, USD) before any group rate multiplier. These panels show fixed trailing windows and ignore the time picker. Windows are trailing, to the hour: 1d is this hour plus the 23 before it.",
       "gridPos": {
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 23
+        "y": 52
       },
       "targets": [
         {
@@ -3587,13 +4249,13 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "id": 16,
+      "id": 20,
       "description": "From sub2api usage_logs: every account that served requests, grouped by provider (the quota provider for tracked accounts, otherwise the sub2api platform). Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens (usage_logs.total_cost, USD) before any group rate multiplier. These panels show fixed trailing windows and ignore the time picker. Hours and days start in the exporter's usage.timezone; the last bar is the current, unfinished one.",
       "gridPos": {
         "h": 9,
         "w": 16,
         "x": 0,
-        "y": 32
+        "y": 61
       },
       "targets": [
         {
@@ -3903,13 +4565,13 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "id": 17,
+      "id": 21,
       "description": "From sub2api usage_logs: every account that served requests, grouped by provider (the quota provider for tracked accounts, otherwise the sub2api platform). Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens (usage_logs.total_cost, USD) before any group rate multiplier. These panels show fixed trailing windows and ignore the time picker. Hours and days start in the exporter's usage.timezone; the last bar is the current, unfinished one.",
       "gridPos": {
         "h": 9,
         "w": 8,
         "x": 16,
-        "y": 32
+        "y": 61
       },
       "targets": [
         {
@@ -4219,13 +4881,13 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "id": 18,
+      "id": 22,
       "description": "From sub2api usage_logs: every account that served requests, grouped by provider (the quota provider for tracked accounts, otherwise the sub2api platform). Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens (usage_logs.total_cost, USD) before any group rate multiplier. These panels show fixed trailing windows and ignore the time picker. Hours and days start in the exporter's usage.timezone; the last bar is the current, unfinished one.",
       "gridPos": {
         "h": 9,
         "w": 16,
         "x": 0,
-        "y": 41
+        "y": 70
       },
       "targets": [
         {
@@ -4535,13 +5197,13 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "id": 19,
+      "id": 23,
       "description": "From sub2api usage_logs: every account that served requests, grouped by provider (the quota provider for tracked accounts, otherwise the sub2api platform). Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens (usage_logs.total_cost, USD) before any group rate multiplier. These panels show fixed trailing windows and ignore the time picker. Hours and days start in the exporter's usage.timezone; the last bar is the current, unfinished one.",
       "gridPos": {
         "h": 9,
         "w": 8,
         "x": 16,
-        "y": 41
+        "y": 70
       },
       "targets": [
         {
@@ -4847,13 +5509,13 @@
     {
       "type": "row",
       "title": "History",
-      "id": 20,
+      "id": 24,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 50
+        "y": 79
       },
       "panels": []
     },
@@ -4864,13 +5526,13 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "id": 21,
+      "id": 25,
       "description": "Share of the 5h window used, per account. Dashed lines mark 70% and 90%.",
       "gridPos": {
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 51
+        "y": 80
       },
       "targets": [
         {
@@ -4950,13 +5612,13 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "id": 22,
+      "id": 26,
       "description": "Share of the weekly window used, per account. Dashed lines mark 70% and 90%.",
       "gridPos": {
         "h": 14,
         "w": 12,
         "x": 0,
-        "y": 65
+        "y": 94
       },
       "targets": [
         {
@@ -5035,13 +5697,13 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "id": 23,
+      "id": 27,
       "description": "Share of the monthly window used, per account. Dashed lines mark 70% and 90%.",
       "gridPos": {
         "h": 14,
         "w": 12,
         "x": 12,
-        "y": 65
+        "y": 94
       },
       "targets": [
         {
@@ -5115,18 +5777,141 @@
     },
     {
       "type": "timeseries",
+      "title": "5h implied capacity · per-fetch samples (USD)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "id": 28,
+      "description": "Capacity implied by each quota fetch alone: list-price USD logged since the 5h window started, divided by the share used (only at 10% used or more). Steady lines mean a steady estimate; a line that drops suggests use of the key outside this sub2api, one that jumps a plan change.",
+      "gridPos": {
+        "h": 14,
+        "w": 12,
+        "x": 0,
+        "y": 108
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_window_consumed{window=\"5h\", unit=\"usd\", job=\"llm_usage\"}) / (max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"5h\", job=\"llm_usage\"}) >= 0.1) > 0",
+          "refId": "A",
+          "legendFormat": "{{provider}} / {{account_name}}",
+          "format": "time_series",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "auto",
+            "spanNulls": 600000,
+            "pointSize": 4
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "median"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Weekly implied capacity · per-fetch samples (USD)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "id": 29,
+      "description": "Capacity implied by each quota fetch alone: list-price USD logged since the weekly window started, divided by the share used (only at 10% used or more). Steady lines mean a steady estimate; a line that drops suggests use of the key outside this sub2api, one that jumps a plan change.",
+      "gridPos": {
+        "h": 14,
+        "w": 12,
+        "x": 12,
+        "y": 108
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_window_consumed{window=\"weekly\", unit=\"usd\", job=\"llm_usage\"}) / (max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"weekly\", job=\"llm_usage\"}) >= 0.1) > 0",
+          "refId": "A",
+          "legendFormat": "{{provider}} / {{account_name}}",
+          "format": "time_series",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "auto",
+            "spanNulls": 600000,
+            "pointSize": 4
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "median"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "timeFrom": "28d"
+    },
+    {
+      "type": "timeseries",
       "title": "Balance (CNY)",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "id": 24,
+      "id": 30,
       "description": "Total balance in CNY; reported by DeepSeek.",
       "gridPos": {
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 79
+        "y": 122
       },
       "targets": [
         {
@@ -5181,13 +5966,13 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "id": 25,
+      "id": 31,
       "description": "Total balance in USD; reported by DeepSeek, Command Code and Cline.",
       "gridPos": {
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 79
+        "y": 122
       },
       "targets": [
         {
@@ -5238,13 +6023,13 @@
     {
       "type": "row",
       "title": "Details",
-      "id": 26,
+      "id": 32,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 86
+        "y": 129
       },
       "panels": []
     },
@@ -5255,13 +6040,13 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "id": 27,
+      "id": 33,
       "description": "Fetch details per account. Data age is how old the numbers are; HTTP is the last upstream status (0 = no response).",
       "gridPos": {
         "h": 22,
         "w": 24,
         "x": 0,
-        "y": 87
+        "y": 130
       },
       "targets": [
         {
@@ -5514,13 +6299,13 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "id": 28,
+      "id": 34,
       "description": "From sub2api usage_logs: every account that served requests, grouped by provider (the quota provider for tracked accounts, otherwise the sub2api platform). Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens (usage_logs.total_cost, USD) before any group rate multiplier. These panels show fixed trailing windows and ignore the time picker. Accounts with no requests in the longest window still show, with zeros.",
       "gridPos": {
         "h": 23,
         "w": 24,
         "x": 0,
-        "y": 109
+        "y": 152
       },
       "targets": [
         {
@@ -5835,13 +6620,13 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "id": 29,
+      "id": 35,
       "description": "Per-account fetch result over time. No API: the account's host (a relay) has no balance endpoint.",
       "gridPos": {
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 132
+        "y": 175
       },
       "targets": [
         {

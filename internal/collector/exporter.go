@@ -16,6 +16,7 @@ import (
 	"github.com/KexiChanProjectAI/llm-usage-exporter/internal/httpclient"
 	"github.com/KexiChanProjectAI/llm-usage-exporter/internal/provider"
 	"github.com/KexiChanProjectAI/llm-usage-exporter/internal/source"
+	"github.com/KexiChanProjectAI/llm-usage-exporter/internal/usage"
 )
 
 // Loader returns the current sub2api accounts.
@@ -23,6 +24,9 @@ type Loader func(ctx context.Context) ([]source.Account, error)
 
 // Fetcher performs one quota fetch.
 type Fetcher func(ctx context.Context, client *http.Client, t provider.Target) (*provider.Result, error)
+
+// WindowUsage sums what sub2api logged for the given accounts over each span.
+type WindowUsage func(ctx context.Context, accountIDs []int64, spans []usage.Span) ([]usage.Consumed, error)
 
 // boundAccount is an account mapped to the group that fetches its quota.
 type boundAccount struct {
@@ -33,6 +37,9 @@ type boundAccount struct {
 	Schedulable bool
 	Provider    string
 	GroupKey    string
+	// UsageID is the sub2api accounts.id that usage_logs refer to; 0 for
+	// config-file accounts, which have no usage there.
+	UsageID int64
 }
 
 // group is one distinct upstream fetch (target + proxy), shared by every
@@ -57,12 +64,16 @@ type group struct {
 	lastStatus   int
 	lastErr      string
 	result       *provider.Result
+	// windows holds, per window of result, its span and what sub2api logged
+	// for the group's accounts in it, as of the fetch that produced result.
+	windows map[string]quotaWindow
 }
 
 type Exporter struct {
 	cfg     *config.Config
 	load    Loader
 	fetch   Fetcher
+	usage   WindowUsage
 	clients *httpclient.Pool
 	log     *slog.Logger
 	now     func() time.Time
@@ -80,6 +91,11 @@ type Exporter struct {
 
 // fetchStats counts fetch outcomes per provider for llm_quota_fetch_total.
 type fetchStats map[[2]string]float64
+
+// SetWindowUsage enables llm_quota_window_consumed: after each successful
+// fetch, the usage of the group's accounts since each window started is read
+// with f. Call it before Run.
+func (e *Exporter) SetWindowUsage(f WindowUsage) { e.usage = f }
 
 func New(cfg *config.Config, load Loader, fetch Fetcher, log *slog.Logger) *Exporter {
 	if fetch == nil {
@@ -174,6 +190,7 @@ func (e *Exporter) reload(ctx context.Context) {
 		bound = append(bound, boundAccount{
 			ID: acc.IDLabel(), Name: acc.Name, Platform: acc.Platform, Status: acc.Status,
 			Schedulable: acc.Schedulable, Provider: t.Provider, GroupKey: key,
+			UsageID: acc.UsageID(),
 		})
 	}
 
@@ -271,6 +288,10 @@ func (e *Exporter) runFetch(ctx context.Context, g *group) {
 		cancel()
 	}
 	end := e.now()
+	var windows map[string]quotaWindow
+	if err == nil {
+		windows = e.quotaWindows(ctx, g, res, end)
+	}
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -285,6 +306,7 @@ func (e *Exporter) runFetch(ctx context.Context, g *group) {
 	if err == nil {
 		g.up, g.authFailed, g.unsupported, g.lastStatus, g.lastErr = true, false, false, http.StatusOK, ""
 		g.result = res
+		g.windows = windows
 		g.lastSuccess = end
 		e.stats[[2]string{g.target.Provider, "success"}]++
 		return
@@ -296,7 +318,7 @@ func (e *Exporter) runFetch(ctx context.Context, g *group) {
 	status := provider.StatusOf(err)
 	if errors.Is(err, provider.ErrUnsupported) {
 		g.up, g.authFailed, g.unsupported = false, false, true
-		g.lastStatus, g.lastErr, g.result = status, err.Error(), nil
+		g.lastStatus, g.lastErr, g.result, g.windows = status, err.Error(), nil, nil
 		g.nextRun = end.Add(e.cfg.Collect.UnsupportedRetry)
 		e.stats[[2]string{g.target.Provider, "unsupported"}]++
 		e.log.Info("endpoint not offered by the account's host; retrying later",
@@ -324,7 +346,7 @@ func (e *Exporter) runFetch(ctx context.Context, g *group) {
 
 	if g.authFailed {
 		// The key is rejected: its old quota no longer means anything.
-		g.result = nil
+		g.result, g.windows = nil, nil
 	}
 	attrs := []any{
 		"provider", g.target.Provider, "accounts", e.accountIDs(g.key),
