@@ -1,0 +1,30 @@
+[Unit]
+Description=LLM usage exporter (sub2api quota windows for Prometheus)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=llm-usage-exporter
+Group=llm-usage-exporter
+EnvironmentFile=/etc/llm-usage-exporter/env
+ExecStart=/opt/llm-usage-exporter/llm-usage-exporter -config /etc/llm-usage-exporter/config.yaml -log-json
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

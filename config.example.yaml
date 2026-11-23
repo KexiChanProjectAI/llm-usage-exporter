@@ -1,0 +1,33 @@
+# llm-usage-exporter config. ${VAR} is replaced from the environment.
+listen: ":9877"
+metrics_path: /metrics
+
+database:
+  # sub2api PostgreSQL. A read-only role with SELECT on accounts and proxies is enough.
+  dsn: "postgres://llm_usage_exporter:${SUB2API_DB_PASSWORD}@127.0.0.1:5432/sub2api?sslmode=disable"
+  reload_interval: 2m
+  query_timeout: 15s
+
+# Proxy precedence: providers.<id>.proxy > account proxy in sub2api
+# (when use_account_proxy) > proxy > direct.
+# Values: "" (not set), "direct", or http/https/socks5/socks5h URL.
+proxy: ""
+use_account_proxy: true
+
+collect:
+  concurrency: 8
+  timeout: 15s          # one upstream HTTP request
+  max_staleness: 1h     # stop exporting values older than this
+
+auth_blacklist:
+  duration: 6h          # skip a rejected key until it changes or this expires
+  status_codes: [401]
+
+providers:
+  zhipu:        { enabled: true, interval: 5m }   # GLM Coding Plan
+  minimax:      { enabled: true, interval: 5m }
+  kimi:         { enabled: true, interval: 5m }
+  opencode_go:  { enabled: true, interval: 5m }   # minimum 5m
+  command_code: { enabled: true, interval: 5m }
+  cline:        { enabled: true, interval: 5m }
+  # example: kimi: { interval: 5m, proxy: "socks5h://127.0.0.1:1080" }

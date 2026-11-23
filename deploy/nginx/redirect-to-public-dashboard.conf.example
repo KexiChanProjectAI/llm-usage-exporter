@@ -1,0 +1,21 @@
+# Example: send a short domain to the public Grafana dashboard with a 302.
+# Replace quota.example.com, the certificate paths and <grafana-host>/<token>.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name quota.example.com;
+    return 302 https://<grafana-host>/public-dashboards/<token>;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name quota.example.com;
+
+    ssl_certificate     /etc/nginx/ssl/example.com.fullchain.cer;
+    ssl_certificate_key /etc/nginx/ssl/example.com.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    return 302 https://<grafana-host>/public-dashboards/<token>;
+}
