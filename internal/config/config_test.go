@@ -32,7 +32,12 @@ func TestValidation(t *testing.T) {
 		_, err := Parse([]byte(doc))
 		require.Error(t, err, name)
 	}
-	_, err := Parse([]byte("database: {dsn: x}\nproxy: direct\nproviders: {kimi: {proxy: 'socks5h://u:p@h:1', interval: 1m}}\n"))
+	_, err := Parse([]byte("database: {dsn: x}\ninstance: ' x'\n"))
+	require.Error(t, err)
+	cfg, err := Parse([]byte("database: {dsn: x}\ninstance: first\n"))
+	require.NoError(t, err)
+	require.Equal(t, "first", cfg.Instance)
+	_, err = Parse([]byte("database: {dsn: x}\nproxy: direct\nproviders: {kimi: {proxy: 'socks5h://u:p@h:1', interval: 1m}}\n"))
 	require.NoError(t, err)
 }
 
@@ -43,4 +48,24 @@ func TestExpandEnv(t *testing.T) {
 	require.Equal(t, "dsn: postgres://u:s3cr$t@h/db $NOT_EXPANDED", out)
 	_, err = expandEnv("${SURELY_MISSING_VAR_123}")
 	require.Error(t, err)
+}
+
+func TestStaticAccounts(t *testing.T) {
+	cfg, err := Parse([]byte("database: {dsn: x}\naccounts:\n  - {name: ds, provider: deepseek, api_key: sk-1}\n  - {name: g, provider: zhipu, api_key: k2, proxy: direct}\n"))
+	require.NoError(t, err)
+	require.Equal(t, "", cfg.Accounts[0].AccountMode)
+	require.Equal(t, "coding", cfg.Accounts[1].AccountMode)
+	require.Equal(t, 6*time.Hour, cfg.Collect.UnsupportedRetry)
+
+	bad := map[string]string{
+		"no name":   "accounts: [{provider: deepseek, api_key: k}]",
+		"dup name":  "accounts: [{name: a, provider: deepseek, api_key: k}, {name: a, provider: kimi, api_key: k}]",
+		"provider":  "accounts: [{name: a, provider: openai, api_key: k}]",
+		"no key":    "accounts: [{name: a, provider: deepseek}]",
+		"bad proxy": "accounts: [{name: a, provider: deepseek, api_key: k, proxy: 'ftp://x:1'}]",
+	}
+	for name, doc := range bad {
+		_, err := Parse([]byte("database: {dsn: x}\n" + doc + "\n"))
+		require.Error(t, err, name)
+	}
 }

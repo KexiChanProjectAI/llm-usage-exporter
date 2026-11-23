@@ -8,10 +8,10 @@
   ],
   "timezone": "browser",
   "schemaVersion": 41,
-  "version": 2,
+  "version": 11,
   "editable": true,
   "graphTooltip": 1,
-  "refresh": "5m",
+  "refresh": "30s",
   "time": {
     "from": "now-7d",
     "to": "now"
@@ -26,15 +26,15 @@
   "panels": [
     {
       "type": "stat",
-      "title": "Accounts tracked",
-      "description": "sub2api accounts with a supported quota window.",
+      "title": "Accounts",
+      "description": "sub2api accounts with a supported quota or balance.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "id": 1,
       "gridPos": {
-        "h": 3,
+        "h": 2,
         "w": 4,
         "x": 0,
         "y": 0
@@ -57,6 +57,9 @@
         "defaults": {
           "unit": "none",
           "noValue": "–",
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -65,9 +68,6 @@
                 "value": null
               }
             ]
-          },
-          "color": {
-            "mode": "thresholds"
           }
         },
         "overrides": []
@@ -83,21 +83,24 @@
         "colorMode": "value",
         "graphMode": "none",
         "textMode": "value",
-        "justifyMode": "center"
+        "justifyMode": "center",
+        "text": {
+          "valueSize": 24
+        }
       }
     },
     {
       "type": "stat",
-      "title": "Highest usage (any window)",
-      "description": "Most-used window (5h, weekly or monthly) across all accounts.",
+      "title": "≥ 90% used",
+      "description": "Accounts with at least one window at 90% or more (red bars); at 100% they are throttled until it resets.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "id": 2,
       "gridPos": {
-        "h": 3,
-        "w": 5,
+        "h": 2,
+        "w": 4,
         "x": 4,
         "y": 0
       },
@@ -107,78 +110,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max(llm_quota_used_ratio{job=\"llm_usage\"})",
-          "refId": "A",
-          "legendFormat": "",
-          "format": "time_series",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "noValue": "–",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 0.7
-              },
-              {
-                "color": "red",
-                "value": 0.9
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          },
-          "decimals": 0
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "none",
-        "textMode": "value",
-        "justifyMode": "center"
-      }
-    },
-    {
-      "type": "stat",
-      "title": "Fetches failing",
-      "description": "Accounts whose last quota fetch failed, excluding blacklisted keys.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "id": 3,
-      "gridPos": {
-        "h": 3,
-        "w": 5,
-        "x": 9,
-        "y": 0
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum((llm_quota_up{job=\"llm_usage\"} == bool 0) * (1 - llm_quota_key_blacklisted{job=\"llm_usage\"}))",
+          "expr": "count(max by (provider, account_id, account_name) (llm_quota_used_ratio{job=\"llm_usage\"}) >= 0.9) or (0 * count(llm_quota_account_info{job=\"llm_usage\"}))",
           "refId": "A",
           "legendFormat": "",
           "format": "time_series",
@@ -190,11 +122,14 @@
         "defaults": {
           "unit": "none",
           "noValue": "–",
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "text",
                 "value": null
               },
               {
@@ -202,9 +137,6 @@
                 "value": 1
               }
             ]
-          },
-          "color": {
-            "mode": "thresholds"
           }
         },
         "overrides": []
@@ -220,22 +152,163 @@
         "colorMode": "value",
         "graphMode": "none",
         "textMode": "value",
-        "justifyMode": "center"
+        "justifyMode": "center",
+        "text": {
+          "valueSize": 24
+        }
       }
     },
     {
       "type": "stat",
-      "title": "Keys blacklisted (401)",
-      "description": "Keys rejected with 401; skipped for 6h or until the key changes in sub2api.",
+      "title": "70–90% used",
+      "description": "Accounts whose most-used window is between 70% and 90% (yellow bars).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "id": 3,
+      "gridPos": {
+        "h": 2,
+        "w": 4,
+        "x": 8,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(max by (provider, account_id, account_name) (llm_quota_used_ratio{job=\"llm_usage\"}) >= 0.7 < 0.9) or (0 * count(llm_quota_account_info{job=\"llm_usage\"}))",
+          "refId": "A",
+          "legendFormat": "",
+          "format": "time_series",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "–",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "text": {
+          "valueSize": 24
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Fetch failing",
+      "description": "Accounts whose last quota fetch failed, excluding rejected keys and hosts without a balance API.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "id": 4,
       "gridPos": {
-        "h": 3,
-        "w": 5,
-        "x": 14,
+        "h": 2,
+        "w": 4,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum((llm_quota_up{job=\"llm_usage\"} == bool 0) * (1 - llm_quota_key_blacklisted{job=\"llm_usage\"}) * llm_quota_endpoint_supported{job=\"llm_usage\"})",
+          "refId": "A",
+          "legendFormat": "",
+          "format": "time_series",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "–",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "text": {
+          "valueSize": 24
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Keys rejected",
+      "description": "Keys rejected with 401; skipped for 6h or until the key changes in sub2api.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "id": 5,
+      "gridPos": {
+        "h": 2,
+        "w": 4,
+        "x": 16,
         "y": 0
       },
       "targets": [
@@ -256,11 +329,14 @@
         "defaults": {
           "unit": "none",
           "noValue": "–",
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "text",
                 "value": null
               },
               {
@@ -268,9 +344,6 @@
                 "value": 1
               }
             ]
-          },
-          "color": {
-            "mode": "thresholds"
           }
         },
         "overrides": []
@@ -286,7 +359,10 @@
         "colorMode": "value",
         "graphMode": "none",
         "textMode": "value",
-        "justifyMode": "center"
+        "justifyMode": "center",
+        "text": {
+          "valueSize": 24
+        }
       }
     },
     {
@@ -297,11 +373,11 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "id": 5,
+      "id": 6,
       "gridPos": {
-        "h": 3,
-        "w": 5,
-        "x": 19,
+        "h": 2,
+        "w": 4,
+        "x": 20,
         "y": 0
       },
       "targets": [
@@ -320,7 +396,8 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "noValue": "✕ Exporter down",
+          "unit": "none",
+          "noValue": "✕ Down",
           "color": {
             "mode": "thresholds"
           },
@@ -342,7 +419,7 @@
               "type": "value",
               "options": {
                 "0": {
-                  "text": "✕ Reload failing",
+                  "text": "✕ DB error",
                   "index": 0
                 },
                 "1": {
@@ -366,23 +443,26 @@
         "colorMode": "value",
         "graphMode": "none",
         "textMode": "value",
-        "justifyMode": "center"
+        "justifyMode": "center",
+        "text": {
+          "valueSize": 24
+        }
       }
     },
     {
       "type": "table",
-      "title": "Current quota",
+      "title": "GLM · 3 accounts",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "id": 6,
-      "description": "One row per account. 'Resets in' is the time left until the window resets; 'Data age' is how old the numbers are.",
+      "id": 7,
+      "description": "GLM accounts (5h, Weekly). Bars show the share of each window used: green below 70%, yellow below 90%, red above. Reset is the time until that window resets.",
       "gridPos": {
-        "h": 8,
-        "w": 24,
+        "h": 5,
+        "w": 12,
         "x": 0,
-        "y": 3
+        "y": 2
       },
       "targets": [
         {
@@ -390,7 +470,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (provider, account_id, account_name, status, schedulable) (llm_quota_account_info{job=\"llm_usage\"})",
+          "expr": "max by (provider, account_id, account_name) (llm_quota_account_info{provider=\"zhipu\", job=\"llm_usage\"})",
           "refId": "K",
           "legendFormat": "",
           "format": "table",
@@ -402,128 +482,68 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(max by (provider, account_id, account_name) (llm_quota_key_blacklisted{job=\"llm_usage\"}) == 1) * 2 or max by (provider, account_id, account_name) (llm_quota_up{job=\"llm_usage\"})",
-          "refId": "I",
-          "legendFormat": "",
-          "format": "table",
-          "instant": true,
-          "range": false
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"5h\", job=\"llm_usage\"})",
-          "refId": "A",
-          "legendFormat": "",
-          "format": "table",
-          "instant": true,
-          "range": false
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"5h\", job=\"llm_usage\"}) - time()",
-          "refId": "B",
-          "legendFormat": "",
-          "format": "table",
-          "instant": true,
-          "range": false
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"weekly\", job=\"llm_usage\"})",
-          "refId": "C",
-          "legendFormat": "",
-          "format": "table",
-          "instant": true,
-          "range": false
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"weekly\", job=\"llm_usage\"}) - time()",
-          "refId": "D",
-          "legendFormat": "",
-          "format": "table",
-          "instant": true,
-          "range": false
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"monthly\", job=\"llm_usage\"})",
-          "refId": "E",
-          "legendFormat": "",
-          "format": "table",
-          "instant": true,
-          "range": false
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"monthly\", job=\"llm_usage\"}) - time()",
-          "refId": "F",
-          "legendFormat": "",
-          "format": "table",
-          "instant": true,
-          "range": false
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "max by (provider, account_id, account_name) (llm_quota_balance{kind=\"total\", job=\"llm_usage\"})",
-          "refId": "G",
-          "legendFormat": "",
-          "format": "table",
-          "instant": true,
-          "range": false
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "time() - max by (provider, account_id, account_name) (llm_quota_last_success_timestamp_seconds{job=\"llm_usage\"})",
-          "refId": "H",
-          "legendFormat": "",
-          "format": "table",
-          "instant": true,
-          "range": false
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "max by (provider, account_id, account_name) (llm_quota_last_http_status{job=\"llm_usage\"})",
-          "refId": "L",
-          "legendFormat": "",
-          "format": "table",
-          "instant": true,
-          "range": false
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "max by (provider, account_id, account_name, plan) (llm_quota_plan_info{job=\"llm_usage\"})",
+          "expr": "max by (provider, account_id, account_name, plan) (llm_quota_plan_info{provider=\"zhipu\", job=\"llm_usage\"})",
           "refId": "J",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"5h\", provider=\"zhipu\", job=\"llm_usage\"})",
+          "refId": "U0",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"5h\", provider=\"zhipu\", job=\"llm_usage\"}) - time()",
+          "refId": "R0",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"weekly\", provider=\"zhipu\", job=\"llm_usage\"})",
+          "refId": "U1",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"weekly\", provider=\"zhipu\", job=\"llm_usage\"}) - time()",
+          "refId": "R1",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max by (provider, account_id, account_name) (llm_quota_key_blacklisted{provider=\"zhipu\", job=\"llm_usage\"}) == 1) * 2 or (max by (provider, account_id, account_name) (llm_quota_endpoint_supported{provider=\"zhipu\", job=\"llm_usage\"}) == 0) + 3 or max by (provider, account_id, account_name) (llm_quota_up{provider=\"zhipu\", job=\"llm_usage\"})",
+          "refId": "S",
           "legendFormat": "",
           "format": "table",
           "instant": true,
@@ -540,44 +560,28 @@
           "options": {
             "excludeByName": {
               "Time": true,
+              "provider": true,
+              "account_id": true,
               "Value #K": true,
               "Value #J": true
             },
             "indexByName": {
-              "provider": 0,
-              "account_name": 1,
-              "Value #I": 2,
-              "Value #A": 3,
-              "Value #B": 4,
-              "Value #C": 5,
-              "Value #D": 6,
-              "Value #E": 7,
-              "Value #F": 8,
-              "Value #G": 9,
-              "plan": 10,
-              "Value #H": 11,
-              "Value #L": 12,
-              "status": 13,
-              "schedulable": 14,
-              "account_id": 15
+              "account_name": 0,
+              "plan": 1,
+              "Value #U0": 2,
+              "Value #R0": 3,
+              "Value #U1": 4,
+              "Value #R1": 5,
+              "Value #S": 6
             },
             "renameByName": {
-              "provider": "Provider",
               "account_name": "Account",
-              "account_id": "ID",
               "plan": "Plan",
-              "status": "sub2api status",
-              "schedulable": "Schedulable",
-              "Value #I": "Fetch",
-              "Value #A": "5h used",
-              "Value #B": "5h resets in",
-              "Value #C": "Weekly used",
-              "Value #D": "Weekly resets in",
-              "Value #E": "Monthly used",
-              "Value #F": "Monthly resets in",
-              "Value #G": "Balance (USD)",
-              "Value #H": "Data age",
-              "Value #L": "HTTP"
+              "Value #U0": "5h used",
+              "Value #R0": "5h reset",
+              "Value #U1": "Weekly used",
+              "Value #R1": "Weekly reset",
+              "Value #S": "Status"
             }
           }
         }
@@ -596,7 +600,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^(5h|Weekly|Monthly) used$/"
+              "options": "/ used$/"
             },
             "properties": [
               {
@@ -646,24 +650,44 @@
                 "value": {
                   "type": "gauge",
                   "mode": "basic",
-                  "valueDisplayMode": "text"
+                  "valueDisplayMode": "color"
                 }
               },
               {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "null",
+                      "result": {
+                        "text": "n/a",
+                        "color": "transparent",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              {
                 "id": "custom.minWidth",
-                "value": 110
+                "value": 60
               }
             ]
           },
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/resets in$/"
+              "options": "/ reset$/"
             },
             "properties": [
               {
                 "id": "unit",
                 "value": "dtdurations"
+              },
+              {
+                "id": "custom.width",
+                "value": 82
               },
               {
                 "id": "mappings",
@@ -674,7 +698,7 @@
                       "from": -1000000000000.0,
                       "to": 0,
                       "result": {
-                        "text": "reset passed (stale)",
+                        "text": "stale",
                         "color": "orange",
                         "index": 0
                       }
@@ -700,7 +724,1437 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Balance (USD)"
+              "options": "Account"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Plan"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "✕ Failing",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "✓ OK",
+                        "color": "green",
+                        "index": 1
+                      },
+                      "2": {
+                        "text": "⊘ Key rejected",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "3": {
+                        "text": "– No API",
+                        "color": "#6e7681",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 95
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Account",
+            "desc": false
+          }
+        ]
+      }
+    },
+    {
+      "type": "table",
+      "title": "Kimi · 3 accounts",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "id": 8,
+      "description": "Kimi accounts (5h, Weekly, Monthly). Bars show the share of each window used: green below 70%, yellow below 90%, red above. Reset is the time until that window resets.",
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 12,
+        "y": 2
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_account_info{provider=\"kimi\", job=\"llm_usage\"})",
+          "refId": "K",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name, plan) (llm_quota_plan_info{provider=\"kimi\", job=\"llm_usage\"})",
+          "refId": "J",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"5h\", provider=\"kimi\", job=\"llm_usage\"})",
+          "refId": "U0",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"5h\", provider=\"kimi\", job=\"llm_usage\"}) - time()",
+          "refId": "R0",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"weekly\", provider=\"kimi\", job=\"llm_usage\"})",
+          "refId": "U1",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"weekly\", provider=\"kimi\", job=\"llm_usage\"}) - time()",
+          "refId": "R1",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"monthly\", provider=\"kimi\", job=\"llm_usage\"})",
+          "refId": "U2",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"monthly\", provider=\"kimi\", job=\"llm_usage\"}) - time()",
+          "refId": "R2",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max by (provider, account_id, account_name) (llm_quota_key_blacklisted{provider=\"kimi\", job=\"llm_usage\"}) == 1) * 2 or (max by (provider, account_id, account_name) (llm_quota_endpoint_supported{provider=\"kimi\", job=\"llm_usage\"}) == 0) + 3 or max by (provider, account_id, account_name) (llm_quota_up{provider=\"kimi\", job=\"llm_usage\"})",
+          "refId": "S",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "provider": true,
+              "account_id": true,
+              "Value #K": true,
+              "Value #J": true
+            },
+            "indexByName": {
+              "account_name": 0,
+              "plan": 1,
+              "Value #U0": 2,
+              "Value #R0": 3,
+              "Value #U1": 4,
+              "Value #R1": 5,
+              "Value #U2": 6,
+              "Value #R2": 7,
+              "Value #S": 8
+            },
+            "renameByName": {
+              "account_name": "Account",
+              "plan": "Plan",
+              "Value #U0": "5h used",
+              "Value #R0": "5h reset",
+              "Value #U1": "Weekly used",
+              "Value #R1": "Weekly reset",
+              "Value #U2": "Monthly used",
+              "Value #R2": "Monthly reset",
+              "Value #S": "Status"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "–"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ used$/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.7
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "color"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "null",
+                      "result": {
+                        "text": "n/a",
+                        "color": "transparent",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.minWidth",
+                "value": 60
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ reset$/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dtdurations"
+              },
+              {
+                "id": "custom.width",
+                "value": 82
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": -1000000000000.0,
+                      "to": 0,
+                      "result": {
+                        "text": "stale",
+                        "color": "orange",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Account"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Plan"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "✕ Failing",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "✓ OK",
+                        "color": "green",
+                        "index": 1
+                      },
+                      "2": {
+                        "text": "⊘ Key rejected",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "3": {
+                        "text": "– No API",
+                        "color": "#6e7681",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 95
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Account",
+            "desc": false
+          }
+        ]
+      }
+    },
+    {
+      "type": "table",
+      "title": "MiniMax · 3 accounts",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "id": 9,
+      "description": "MiniMax accounts (5h, Weekly). Bars show the share of each window used: green below 70%, yellow below 90%, red above. Reset is the time until that window resets.",
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 0,
+        "y": 7
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_account_info{provider=\"minimax\", job=\"llm_usage\"})",
+          "refId": "K",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name, plan) (llm_quota_plan_info{provider=\"minimax\", job=\"llm_usage\"})",
+          "refId": "J",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"5h\", provider=\"minimax\", job=\"llm_usage\"})",
+          "refId": "U0",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"5h\", provider=\"minimax\", job=\"llm_usage\"}) - time()",
+          "refId": "R0",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"weekly\", provider=\"minimax\", job=\"llm_usage\"})",
+          "refId": "U1",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"weekly\", provider=\"minimax\", job=\"llm_usage\"}) - time()",
+          "refId": "R1",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max by (provider, account_id, account_name) (llm_quota_key_blacklisted{provider=\"minimax\", job=\"llm_usage\"}) == 1) * 2 or (max by (provider, account_id, account_name) (llm_quota_endpoint_supported{provider=\"minimax\", job=\"llm_usage\"}) == 0) + 3 or max by (provider, account_id, account_name) (llm_quota_up{provider=\"minimax\", job=\"llm_usage\"})",
+          "refId": "S",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "provider": true,
+              "account_id": true,
+              "Value #K": true,
+              "Value #J": true
+            },
+            "indexByName": {
+              "account_name": 0,
+              "plan": 1,
+              "Value #U0": 2,
+              "Value #R0": 3,
+              "Value #U1": 4,
+              "Value #R1": 5,
+              "Value #S": 6
+            },
+            "renameByName": {
+              "account_name": "Account",
+              "plan": "Plan",
+              "Value #U0": "5h used",
+              "Value #R0": "5h reset",
+              "Value #U1": "Weekly used",
+              "Value #R1": "Weekly reset",
+              "Value #S": "Status"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "–"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ used$/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.7
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "color"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "null",
+                      "result": {
+                        "text": "n/a",
+                        "color": "transparent",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.minWidth",
+                "value": 60
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ reset$/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dtdurations"
+              },
+              {
+                "id": "custom.width",
+                "value": 82
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": -1000000000000.0,
+                      "to": 0,
+                      "result": {
+                        "text": "stale",
+                        "color": "orange",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Account"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Plan"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "✕ Failing",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "✓ OK",
+                        "color": "green",
+                        "index": 1
+                      },
+                      "2": {
+                        "text": "⊘ Key rejected",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "3": {
+                        "text": "– No API",
+                        "color": "#6e7681",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 95
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Account",
+            "desc": false
+          }
+        ]
+      }
+    },
+    {
+      "type": "table",
+      "title": "OpenCode Go · 3 accounts",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "id": 10,
+      "description": "OpenCode Go accounts (5h, Weekly, Monthly). Bars show the share of each window used: green below 70%, yellow below 90%, red above. Reset is the time until that window resets.",
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 12,
+        "y": 7
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_account_info{provider=\"opencode_go\", job=\"llm_usage\"})",
+          "refId": "K",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name, plan) (llm_quota_plan_info{provider=\"opencode_go\", job=\"llm_usage\"})",
+          "refId": "J",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"5h\", provider=\"opencode_go\", job=\"llm_usage\"})",
+          "refId": "U0",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"5h\", provider=\"opencode_go\", job=\"llm_usage\"}) - time()",
+          "refId": "R0",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"weekly\", provider=\"opencode_go\", job=\"llm_usage\"})",
+          "refId": "U1",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"weekly\", provider=\"opencode_go\", job=\"llm_usage\"}) - time()",
+          "refId": "R1",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"monthly\", provider=\"opencode_go\", job=\"llm_usage\"})",
+          "refId": "U2",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"monthly\", provider=\"opencode_go\", job=\"llm_usage\"}) - time()",
+          "refId": "R2",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max by (provider, account_id, account_name) (llm_quota_key_blacklisted{provider=\"opencode_go\", job=\"llm_usage\"}) == 1) * 2 or (max by (provider, account_id, account_name) (llm_quota_endpoint_supported{provider=\"opencode_go\", job=\"llm_usage\"}) == 0) + 3 or max by (provider, account_id, account_name) (llm_quota_up{provider=\"opencode_go\", job=\"llm_usage\"})",
+          "refId": "S",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "provider": true,
+              "account_id": true,
+              "Value #K": true,
+              "Value #J": true
+            },
+            "indexByName": {
+              "account_name": 0,
+              "plan": 1,
+              "Value #U0": 2,
+              "Value #R0": 3,
+              "Value #U1": 4,
+              "Value #R1": 5,
+              "Value #U2": 6,
+              "Value #R2": 7,
+              "Value #S": 8
+            },
+            "renameByName": {
+              "account_name": "Account",
+              "plan": "Plan",
+              "Value #U0": "5h used",
+              "Value #R0": "5h reset",
+              "Value #U1": "Weekly used",
+              "Value #R1": "Weekly reset",
+              "Value #U2": "Monthly used",
+              "Value #R2": "Monthly reset",
+              "Value #S": "Status"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "–"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ used$/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.7
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "color"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "null",
+                      "result": {
+                        "text": "n/a",
+                        "color": "transparent",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.minWidth",
+                "value": 60
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ reset$/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dtdurations"
+              },
+              {
+                "id": "custom.width",
+                "value": 82
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": -1000000000000.0,
+                      "to": 0,
+                      "result": {
+                        "text": "stale",
+                        "color": "orange",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Account"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Plan"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "✕ Failing",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "✓ OK",
+                        "color": "green",
+                        "index": 1
+                      },
+                      "2": {
+                        "text": "⊘ Key rejected",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "3": {
+                        "text": "– No API",
+                        "color": "#6e7681",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 95
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Account",
+            "desc": false
+          }
+        ]
+      }
+    },
+    {
+      "type": "table",
+      "title": "Command Code · 3 accounts",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "id": 11,
+      "description": "Command Code accounts (5h, Weekly, Monthly). Bars show the share of each window used: green below 70%, yellow below 90%, red above. Reset is the time until that window resets.",
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_account_info{provider=\"command_code\", job=\"llm_usage\"})",
+          "refId": "K",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name, plan) (llm_quota_plan_info{provider=\"command_code\", job=\"llm_usage\"})",
+          "refId": "J",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"5h\", provider=\"command_code\", job=\"llm_usage\"})",
+          "refId": "U0",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"5h\", provider=\"command_code\", job=\"llm_usage\"}) - time()",
+          "refId": "R0",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"weekly\", provider=\"command_code\", job=\"llm_usage\"})",
+          "refId": "U1",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"weekly\", provider=\"command_code\", job=\"llm_usage\"}) - time()",
+          "refId": "R1",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"monthly\", provider=\"command_code\", job=\"llm_usage\"})",
+          "refId": "U2",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"monthly\", provider=\"command_code\", job=\"llm_usage\"}) - time()",
+          "refId": "R2",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_balance{kind=\"total\", currency=\"USD\", provider=\"command_code\", job=\"llm_usage\"})",
+          "refId": "BUSD",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max by (provider, account_id, account_name) (llm_quota_key_blacklisted{provider=\"command_code\", job=\"llm_usage\"}) == 1) * 2 or (max by (provider, account_id, account_name) (llm_quota_endpoint_supported{provider=\"command_code\", job=\"llm_usage\"}) == 0) + 3 or max by (provider, account_id, account_name) (llm_quota_up{provider=\"command_code\", job=\"llm_usage\"})",
+          "refId": "S",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "provider": true,
+              "account_id": true,
+              "Value #K": true,
+              "Value #J": true
+            },
+            "indexByName": {
+              "account_name": 0,
+              "plan": 1,
+              "Value #U0": 2,
+              "Value #R0": 3,
+              "Value #U1": 4,
+              "Value #R1": 5,
+              "Value #U2": 6,
+              "Value #R2": 7,
+              "Value #BUSD": 8,
+              "Value #S": 9
+            },
+            "renameByName": {
+              "account_name": "Account",
+              "plan": "Plan",
+              "Value #U0": "5h used",
+              "Value #R0": "5h reset",
+              "Value #U1": "Weekly used",
+              "Value #R1": "Weekly reset",
+              "Value #U2": "Monthly used",
+              "Value #R2": "Monthly reset",
+              "Value #BUSD": "Balance USD",
+              "Value #S": "Status"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "–"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Balance USD"
             },
             "properties": [
               {
@@ -710,6 +2164,1683 @@
               {
                 "id": "decimals",
                 "value": 2
+              },
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ used$/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.7
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "color"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "null",
+                      "result": {
+                        "text": "n/a",
+                        "color": "transparent",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.minWidth",
+                "value": 60
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ reset$/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dtdurations"
+              },
+              {
+                "id": "custom.width",
+                "value": 82
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": -1000000000000.0,
+                      "to": 0,
+                      "result": {
+                        "text": "stale",
+                        "color": "orange",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Account"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Plan"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "✕ Failing",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "✓ OK",
+                        "color": "green",
+                        "index": 1
+                      },
+                      "2": {
+                        "text": "⊘ Key rejected",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "3": {
+                        "text": "– No API",
+                        "color": "#6e7681",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 95
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Account",
+            "desc": false
+          }
+        ]
+      }
+    },
+    {
+      "type": "table",
+      "title": "Cline · 3 accounts",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "id": 12,
+      "description": "Cline accounts (5h, Weekly, Monthly). Bars show the share of each window used: green below 70%, yellow below 90%, red above. Reset is the time until that window resets.",
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_account_info{provider=\"cline\", job=\"llm_usage\"})",
+          "refId": "K",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name, plan) (llm_quota_plan_info{provider=\"cline\", job=\"llm_usage\"})",
+          "refId": "J",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"5h\", provider=\"cline\", job=\"llm_usage\"})",
+          "refId": "U0",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"5h\", provider=\"cline\", job=\"llm_usage\"}) - time()",
+          "refId": "R0",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"weekly\", provider=\"cline\", job=\"llm_usage\"})",
+          "refId": "U1",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"weekly\", provider=\"cline\", job=\"llm_usage\"}) - time()",
+          "refId": "R1",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"monthly\", provider=\"cline\", job=\"llm_usage\"})",
+          "refId": "U2",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_reset_timestamp_seconds{window=\"monthly\", provider=\"cline\", job=\"llm_usage\"}) - time()",
+          "refId": "R2",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_balance{kind=\"total\", currency=\"USD\", provider=\"cline\", job=\"llm_usage\"})",
+          "refId": "BUSD",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max by (provider, account_id, account_name) (llm_quota_key_blacklisted{provider=\"cline\", job=\"llm_usage\"}) == 1) * 2 or (max by (provider, account_id, account_name) (llm_quota_endpoint_supported{provider=\"cline\", job=\"llm_usage\"}) == 0) + 3 or max by (provider, account_id, account_name) (llm_quota_up{provider=\"cline\", job=\"llm_usage\"})",
+          "refId": "S",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "provider": true,
+              "account_id": true,
+              "Value #K": true,
+              "Value #J": true
+            },
+            "indexByName": {
+              "account_name": 0,
+              "plan": 1,
+              "Value #U0": 2,
+              "Value #R0": 3,
+              "Value #U1": 4,
+              "Value #R1": 5,
+              "Value #U2": 6,
+              "Value #R2": 7,
+              "Value #BUSD": 8,
+              "Value #S": 9
+            },
+            "renameByName": {
+              "account_name": "Account",
+              "plan": "Plan",
+              "Value #U0": "5h used",
+              "Value #R0": "5h reset",
+              "Value #U1": "Weekly used",
+              "Value #R1": "Weekly reset",
+              "Value #U2": "Monthly used",
+              "Value #R2": "Monthly reset",
+              "Value #BUSD": "Balance USD",
+              "Value #S": "Status"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "–"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Balance USD"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ used$/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.7
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "color"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "null",
+                      "result": {
+                        "text": "n/a",
+                        "color": "transparent",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.minWidth",
+                "value": 60
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ reset$/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dtdurations"
+              },
+              {
+                "id": "custom.width",
+                "value": 82
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": -1000000000000.0,
+                      "to": 0,
+                      "result": {
+                        "text": "stale",
+                        "color": "orange",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Account"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Plan"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "✕ Failing",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "✓ OK",
+                        "color": "green",
+                        "index": 1
+                      },
+                      "2": {
+                        "text": "⊘ Key rejected",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "3": {
+                        "text": "– No API",
+                        "color": "#6e7681",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 95
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Account",
+            "desc": false
+          }
+        ]
+      }
+    },
+    {
+      "type": "table",
+      "title": "DeepSeek · 3 accounts",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "id": 13,
+      "description": "DeepSeek accounts (balance). Bars show the share of each window used: green below 70%, yellow below 90%, red above. Reset is the time until that window resets.",
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_account_info{provider=\"deepseek\", job=\"llm_usage\"})",
+          "refId": "K",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name, plan) (llm_quota_plan_info{provider=\"deepseek\", job=\"llm_usage\"})",
+          "refId": "J",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_balance{kind=\"total\", currency=\"CNY\", provider=\"deepseek\", job=\"llm_usage\"})",
+          "refId": "BCNY",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_balance{kind=\"total\", currency=\"USD\", provider=\"deepseek\", job=\"llm_usage\"})",
+          "refId": "BUSD",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_balance_available{provider=\"deepseek\", job=\"llm_usage\"})",
+          "refId": "BA",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max by (provider, account_id, account_name) (llm_quota_key_blacklisted{provider=\"deepseek\", job=\"llm_usage\"}) == 1) * 2 or (max by (provider, account_id, account_name) (llm_quota_endpoint_supported{provider=\"deepseek\", job=\"llm_usage\"}) == 0) + 3 or max by (provider, account_id, account_name) (llm_quota_up{provider=\"deepseek\", job=\"llm_usage\"})",
+          "refId": "S",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "provider": true,
+              "account_id": true,
+              "Value #K": true,
+              "Value #J": true
+            },
+            "indexByName": {
+              "account_name": 0,
+              "plan": 1,
+              "Value #BCNY": 2,
+              "Value #BUSD": 3,
+              "Value #BA": 4,
+              "Value #S": 5
+            },
+            "renameByName": {
+              "account_name": "Account",
+              "plan": "Plan",
+              "Value #BCNY": "Balance CNY",
+              "Value #BUSD": "Balance USD",
+              "Value #BA": "Usable",
+              "Value #S": "Status"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "–"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Balance CNY"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyCNY"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Balance USD"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Usable"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "1": {
+                        "text": "✓ Yes",
+                        "color": "green",
+                        "index": 0
+                      },
+                      "0": {
+                        "text": "✕ No",
+                        "color": "red",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 70
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ used$/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 1
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.7
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "color"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "null",
+                      "result": {
+                        "text": "n/a",
+                        "color": "transparent",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.minWidth",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ reset$/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dtdurations"
+              },
+              {
+                "id": "custom.width",
+                "value": 125
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": -1000000000000.0,
+                      "to": 0,
+                      "result": {
+                        "text": "stale",
+                        "color": "orange",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Account"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 160
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Plan"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "✕ Failing",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "✓ OK",
+                        "color": "green",
+                        "index": 1
+                      },
+                      "2": {
+                        "text": "⊘ Key rejected",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "3": {
+                        "text": "– No API",
+                        "color": "#6e7681",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 140
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Account",
+            "desc": false
+          }
+        ]
+      }
+    },
+    {
+      "type": "row",
+      "title": "History",
+      "id": 14,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "5h window used (last 2 days)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "id": 15,
+      "description": "Share of the 5h window used, per account. Dashed lines mark 70% and 90%.",
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"5h\", job=\"llm_usage\"})",
+          "refId": "A",
+          "legendFormat": "{{provider}} / {{account_name}}",
+          "format": "time_series",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "decimals": 0,
+          "noValue": "No data",
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.7
+              },
+              {
+                "color": "red",
+                "value": 0.9
+              }
+            ]
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": 600000,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            },
+            "axisSoftMax": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "sortBy": "Name",
+          "sortDesc": false
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "timeFrom": "2d"
+    },
+    {
+      "type": "timeseries",
+      "title": "Weekly window used",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "id": 16,
+      "description": "Share of the weekly window used, per account. Dashed lines mark 70% and 90%.",
+      "gridPos": {
+        "h": 14,
+        "w": 12,
+        "x": 0,
+        "y": 37
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"weekly\", job=\"llm_usage\"})",
+          "refId": "A",
+          "legendFormat": "{{provider}} / {{account_name}}",
+          "format": "time_series",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "decimals": 0,
+          "noValue": "No data",
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.7
+              },
+              {
+                "color": "red",
+                "value": 0.9
+              }
+            ]
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": 600000,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            },
+            "axisSoftMax": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "sortBy": "Name",
+          "sortDesc": false
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Monthly window used",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "id": 17,
+      "description": "Share of the monthly window used, per account. Dashed lines mark 70% and 90%.",
+      "gridPos": {
+        "h": 14,
+        "w": 12,
+        "x": 12,
+        "y": 37
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"monthly\", job=\"llm_usage\"})",
+          "refId": "A",
+          "legendFormat": "{{provider}} / {{account_name}}",
+          "format": "time_series",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "decimals": 0,
+          "noValue": "No data",
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.7
+              },
+              {
+                "color": "red",
+                "value": 0.9
+              }
+            ]
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": 600000,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            },
+            "axisSoftMax": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "sortBy": "Name",
+          "sortDesc": false
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Balance (CNY)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "id": 18,
+      "description": "Total balance in CNY; reported by DeepSeek.",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 51
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_balance{kind=\"total\", currency=\"CNY\", job=\"llm_usage\"})",
+          "refId": "A",
+          "legendFormat": "{{provider}} / {{account_name}}",
+          "format": "time_series",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyCNY",
+          "min": 0,
+          "noValue": "No account here reports a CNY balance",
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": 600000
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "min"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Balance (USD)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "id": 19,
+      "description": "Total balance in USD; reported by DeepSeek, Command Code and Cline.",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 51
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_balance{kind=\"total\", currency=\"USD\", job=\"llm_usage\"})",
+          "refId": "A",
+          "legendFormat": "{{provider}} / {{account_name}}",
+          "format": "time_series",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "min": 0,
+          "noValue": "No account here reports a USD balance",
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": 600000
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "min"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Details",
+      "id": 20,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 58
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Accounts",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "id": 21,
+      "description": "Fetch details per account. Data age is how old the numbers are; HTTP is the last upstream status (0 = no response).",
+      "gridPos": {
+        "h": 22,
+        "w": 24,
+        "x": 0,
+        "y": 59
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name, platform, status, schedulable) (llm_quota_account_info{job=\"llm_usage\"})",
+          "refId": "K",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name, plan) (llm_quota_plan_info{job=\"llm_usage\"})",
+          "refId": "J",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max by (provider, account_id, account_name) (llm_quota_key_blacklisted{job=\"llm_usage\"}) == 1) * 2 or (max by (provider, account_id, account_name) (llm_quota_endpoint_supported{job=\"llm_usage\"}) == 0) + 3 or max by (provider, account_id, account_name) (llm_quota_up{job=\"llm_usage\"})",
+          "refId": "S",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - max by (provider, account_id, account_name) (llm_quota_last_success_timestamp_seconds{job=\"llm_usage\"})",
+          "refId": "H",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (provider, account_id, account_name) (llm_quota_last_http_status{job=\"llm_usage\"})",
+          "refId": "L",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value #K": true,
+              "Value #J": true
+            },
+            "indexByName": {
+              "provider": 0,
+              "account_name": 1,
+              "account_id": 2,
+              "plan": 3,
+              "Value #S": 4,
+              "Value #H": 5,
+              "Value #L": 6,
+              "platform": 7,
+              "status": 8,
+              "schedulable": 9
+            },
+            "renameByName": {
+              "provider": "Provider",
+              "account_name": "Account",
+              "account_id": "ID",
+              "plan": "Plan",
+              "Value #S": "Status",
+              "Value #H": "Data age",
+              "Value #L": "HTTP",
+              "platform": "sub2api platform",
+              "status": "sub2api status",
+              "schedulable": "Schedulable"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Account"
+              }
+            ]
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Provider"
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "–"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "✕ Failing",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "✓ OK",
+                        "color": "green",
+                        "index": 1
+                      },
+                      "2": {
+                        "text": "⊘ Key rejected",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "3": {
+                        "text": "– No API",
+                        "color": "#6e7681",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
               }
             ]
           },
@@ -764,51 +3895,12 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Fetch"
-            },
-            "properties": [
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "value",
-                    "options": {
-                      "0": {
-                        "text": "✕ Failing",
-                        "color": "red",
-                        "index": 0
-                      },
-                      "1": {
-                        "text": "✓ OK",
-                        "color": "green",
-                        "index": 1
-                      },
-                      "2": {
-                        "text": "⊘ Blacklisted (401)",
-                        "color": "orange",
-                        "index": 2
-                      }
-                    }
-                  }
-                ]
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
               "options": "ID"
             },
             "properties": [
               {
                 "id": "custom.width",
-                "value": 60
+                "value": 70
               }
             ]
           }
@@ -816,276 +3908,7 @@
       },
       "options": {
         "showHeader": true,
-        "cellHeight": "sm",
-        "sortBy": [
-          {
-            "displayName": "Fetch",
-            "desc": false
-          }
-        ]
-      }
-    },
-    {
-      "type": "row",
-      "title": "History",
-      "id": 7,
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 11
-      },
-      "panels": []
-    },
-    {
-      "type": "timeseries",
-      "title": "5h window used (last 2 days)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "id": 8,
-      "description": "Share of the 5h window used, per account. Dashed lines mark 70% and 90%.",
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 12
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"5h\", job=\"llm_usage\"})",
-          "refId": "A",
-          "legendFormat": "{{provider}} / {{account_name}}",
-          "format": "time_series",
-          "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "min": 0,
-          "decimals": 0,
-          "noValue": "No data",
-          "color": {
-            "mode": "palette-classic-by-name"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 0.7
-              },
-              {
-                "color": "red",
-                "value": 0.9
-              }
-            ]
-          },
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 0,
-            "showPoints": "never",
-            "spanNulls": 600000,
-            "thresholdsStyle": {
-              "mode": "dashed"
-            },
-            "axisSoftMax": 1
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ]
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "timeFrom": "2d"
-    },
-    {
-      "type": "timeseries",
-      "title": "Weekly window used",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "id": 9,
-      "description": "Share of the weekly window used, per account. Dashed lines mark 70% and 90%.",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 20
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"weekly\", job=\"llm_usage\"})",
-          "refId": "A",
-          "legendFormat": "{{provider}} / {{account_name}}",
-          "format": "time_series",
-          "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "min": 0,
-          "decimals": 0,
-          "noValue": "No data",
-          "color": {
-            "mode": "palette-classic-by-name"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 0.7
-              },
-              {
-                "color": "red",
-                "value": 0.9
-              }
-            ]
-          },
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 0,
-            "showPoints": "never",
-            "spanNulls": 600000,
-            "thresholdsStyle": {
-              "mode": "dashed"
-            },
-            "axisSoftMax": 1
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ]
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
-      "title": "Monthly window used",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "id": 10,
-      "description": "Share of the monthly window used, per account. Dashed lines mark 70% and 90%.",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 20
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "max by (provider, account_id, account_name) (llm_quota_used_ratio{window=\"monthly\", job=\"llm_usage\"})",
-          "refId": "A",
-          "legendFormat": "{{provider}} / {{account_name}}",
-          "format": "time_series",
-          "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "min": 0,
-          "decimals": 0,
-          "noValue": "No account here has a monthly window",
-          "color": {
-            "mode": "palette-classic-by-name"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 0.7
-              },
-              {
-                "color": "red",
-                "value": 0.9
-              }
-            ]
-          },
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 0,
-            "showPoints": "never",
-            "spanNulls": 600000,
-            "thresholdsStyle": {
-              "mode": "dashed"
-            },
-            "axisSoftMax": 1
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ]
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
+        "cellHeight": "sm"
       }
     },
     {
@@ -1095,13 +3918,13 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "id": 11,
-      "description": "Per-account fetch result over time.",
+      "id": 22,
+      "description": "Per-account fetch result over time. No API: the account's host (a relay) has no balance endpoint.",
       "gridPos": {
-        "h": 6,
-        "w": 12,
+        "h": 14,
+        "w": 24,
         "x": 0,
-        "y": 28
+        "y": 81
       },
       "targets": [
         {
@@ -1109,7 +3932,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(max by (provider, account_id, account_name) (llm_quota_key_blacklisted{job=\"llm_usage\"}) == 1) * 2 or max by (provider, account_id, account_name) (llm_quota_up{job=\"llm_usage\"})",
+          "expr": "(max by (provider, account_id, account_name) (llm_quota_key_blacklisted{job=\"llm_usage\"}) == 1) * 2 or (max by (provider, account_id, account_name) (llm_quota_endpoint_supported{job=\"llm_usage\"}) == 0) + 3 or max by (provider, account_id, account_name) (llm_quota_up{job=\"llm_usage\"})",
           "refId": "A",
           "legendFormat": "{{provider}} / {{account_name}}",
           "format": "time_series",
@@ -1137,9 +3960,14 @@
                   "index": 1
                 },
                 "2": {
-                  "text": "⊘ Blacklisted (401)",
+                  "text": "⊘ Key rejected",
                   "color": "orange",
                   "index": 2
+                },
+                "3": {
+                  "text": "– No API",
+                  "color": "#6e7681",
+                  "index": 3
                 }
               }
             }
@@ -1163,63 +3991,6 @@
         },
         "tooltip": {
           "mode": "single"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
-      "title": "Credit balance (USD)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "id": 12,
-      "description": "Total credit balance; only Command Code and Cline report one.",
-      "gridPos": {
-        "h": 6,
-        "w": 12,
-        "x": 12,
-        "y": 28
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "max by (provider, account_id, account_name) (llm_quota_balance{kind=\"total\", job=\"llm_usage\"})",
-          "refId": "A",
-          "legendFormat": "{{provider}} / {{account_name}}",
-          "format": "time_series",
-          "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "currencyUSD",
-          "min": 0,
-          "noValue": "No provider here reports a balance",
-          "color": {
-            "mode": "palette-classic-by-name"
-          },
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 0,
-            "showPoints": "never",
-            "spanNulls": 600000
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
         }
       }
     }

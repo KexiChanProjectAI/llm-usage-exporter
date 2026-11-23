@@ -1,5 +1,6 @@
-# Append under scrape_configs in prometheus.yml.
+# Append under scrape_configs in prometheus.yml. One target per exporter
+# instance; each exporter adds its own sub2api_instance label (config: instance).
   - job_name: llm_usage
     scrape_interval: 60s
     static_configs:
-      - targets: ["127.0.0.1:9877"]
+      - targets: ["127.0.0.1:9877", "127.0.0.1:9878"]

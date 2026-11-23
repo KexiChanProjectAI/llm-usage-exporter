@@ -8,6 +8,9 @@ import (
 	"net"
 	"net/url"
 	"strconv"
+	"strings"
+
+	"github.com/KexiChanProjectAI/llm-usage-exporter/internal/config"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -19,7 +22,9 @@ type Querier interface {
 
 // Account is the subset of a sub2api accounts row the exporter needs.
 type Account struct {
-	ID          int64
+	ID int64
+	// LabelID overrides the account_id label; used for config-file accounts.
+	LabelID     string
 	Name        string
 	Platform    string
 	Type        string
@@ -29,6 +34,14 @@ type Account struct {
 	// ProxyURL is the account's sub2api proxy (accounts.proxy_id), "" when the
 	// account has none or the proxy row is gone.
 	ProxyURL string
+}
+
+// IDLabel is the account_id label value.
+func (a *Account) IDLabel() string {
+	if a.LabelID != "" {
+		return a.LabelID
+	}
+	return strconv.FormatInt(a.ID, 10)
 }
 
 // Credential returns credentials[key] when it is a string.
@@ -117,4 +130,28 @@ func deref(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// StaticAccounts turns config-file accounts into Accounts. Their account_id
+// label is "cfg:<name>" and their status "config".
+func StaticAccounts(list []config.StaticAccount) []Account {
+	out := make([]Account, 0, len(list))
+	for _, a := range list {
+		creds := map[string]any{"api_key": strings.TrimSpace(a.APIKey)}
+		if a.BaseURL != "" {
+			creds["base_url"] = strings.TrimSpace(a.BaseURL)
+		}
+		if a.AccountMode != "" {
+			creds["account_mode"] = a.AccountMode
+		}
+		proxy := strings.TrimSpace(a.Proxy)
+		if proxy == config.ProxyDirect {
+			proxy = ""
+		}
+		out = append(out, Account{
+			LabelID: "cfg:" + a.Name, Name: a.Name, Platform: a.Provider, Type: "apikey",
+			Status: "config", Schedulable: true, Credentials: creds, ProxyURL: proxy,
+		})
+	}
+	return out
 }

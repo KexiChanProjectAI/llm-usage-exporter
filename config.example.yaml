@@ -1,5 +1,8 @@
 # llm-usage-exporter config. ${VAR} is replaced from the environment.
 listen: ":9877"
+# Name of the sub2api instance; added to every metric as sub2api_instance.
+# Optional; set it when one Prometheus scrapes several exporters.
+instance: ""
 metrics_path: /metrics
 
 database:
@@ -18,10 +21,17 @@ collect:
   concurrency: 8
   timeout: 15s          # one upstream HTTP request
   max_staleness: 1h     # stop exporting values older than this
+  unsupported_retry: 6h # retry hosts without the endpoint (e.g. DeepSeek relays) this rarely
 
 auth_blacklist:
   duration: 6h          # skip a rejected key until it changes or this expires
   status_codes: [401]
+
+# Accounts that are not in sub2api, e.g. official DeepSeek keys.
+# accounts:
+#   - name: DeepSeek Cyber
+#     provider: deepseek
+#     api_key: ${DEEPSEEK_CYBER_KEY}
 
 providers:
   zhipu:        { enabled: true, interval: 5m }   # GLM Coding Plan
@@ -30,4 +40,5 @@ providers:
   opencode_go:  { enabled: true, interval: 5m }   # minimum 5m
   command_code: { enabled: true, interval: 5m }
   cline:        { enabled: true, interval: 5m }
+  deepseek:     { enabled: true, interval: 5m }   # pay-as-you-go balance
   # example: kimi: { interval: 5m, proxy: "socks5h://127.0.0.1:1080" }

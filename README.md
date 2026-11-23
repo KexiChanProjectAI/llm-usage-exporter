@@ -2,7 +2,7 @@
 
 从 sub2api 数据库读取 Coding Plan / 订阅类账号，定时查询各提供商的用量窗口，以 Prometheus 指标暴露。
 
-支持：GLM（智谱，`zhipu`）、MiniMax、Kimi、OpenCode Go、Command Code、Cline。
+支持：GLM（智谱，`zhipu`）、MiniMax、Kimi、OpenCode Go、Command Code、Cline 的用量窗口，以及 DeepSeek 按量付费账号的余额。
 
 ## 工作方式
 
@@ -15,6 +15,21 @@
 - 返回 `auth_blacklist.status_codes`（默认 401）的 Key 会被跳过 `auth_blacklist.duration`（默认 6 小时）；sub2api 里换了 Key 之后立即重新查询。
   黑名单在内存中，重启后会再试一次。
 - 不跟随重定向，不读取 `HTTP(S)_PROXY` 环境变量，代理只由配置决定。
+
+## 配置文件中的账号
+
+不在 sub2api 里的账号（例如直接用官方 Key 的 DeepSeek 账号）可以写在配置文件的 `accounts` 里，和 sub2api 的账号一起采集：
+
+```yaml
+accounts:
+  - name: DeepSeek Cyber
+    provider: deepseek
+    api_key: ${DEEPSEEK_CYBER_KEY}
+```
+
+`base_url` 默认是该提供商的官方地址；`account_mode` 对 zhipu、kimi、minimax 默认为 `coding`；`proxy` 的优先级与 sub2api 账号的代理相同。
+这些账号的 `account_id` 标签为 `cfg:<name>`，`status` 为 `config`。
+读取 sub2api 失败时，这些账号也随之保持上一次加载的状态。
 
 ## 代理
 
@@ -38,20 +53,27 @@
 | `opencode_go` | `opencode.ai/zen/go/v1/usage` | 5h、weekly、monthly |
 | `command_code` | `api.commandcode.ai/alpha/*`（4 次请求） | 5h、weekly、monthly，余额 |
 | `cline` | `api.cline.bot/api/v1/users/*` | 5h、weekly、monthly，余额 |
+| `deepseek` | `api.deepseek.com/user/balance` | 只有余额（CNY / USD） |
+
+DeepSeek 与 sub2api 一致，请求 `<OpenAI 格式 base_url>/user/balance`，即账号推理时本来就在用的主机，因此中转站只要实现了这个接口也能查。
+没有这个接口的中转站（返回 400/404/405/501，或包着 "not found" 的错误，或 2xx 但没有 `balance_infos`）不算失败：`llm_quota_endpoint_supported` 为 0，每 `collect.unsupported_retry`（默认 6 小时）才再试一次。
+Anthropic 协议的账号只在 base_url 是官方 `api.deepseek.com` 时查询：sub2api 对这类账号会回退到官方地址，那样会把中转站的 Key 发给 DeepSeek。
 
 ## 指标
 
-公共标签：`provider`、`account_id`、`account_name`。
+公共标签：`provider`、`account_id`、`account_name`；配置了 `instance` 时所有指标另有 `sub2api_instance`。
 
 | 指标 | 额外标签 | 说明 |
 |---|---|---|
 | `llm_quota_used_ratio` | `window` | 已用比例，0–1，可能超过 1 |
 | `llm_quota_reset_timestamp_seconds` | `window` | 窗口重置时间 |
 | `llm_quota_window_used` / `llm_quota_window_limit` | `window`, `unit` | 绝对用量（Command Code 为 `usd`，Kimi 老套餐为 `count`） |
-| `llm_quota_balance` | `kind`, `currency` | 余额（Command Code、Cline） |
+| `llm_quota_balance` | `kind`, `currency` | 余额（Command Code、Cline、DeepSeek）；`kind` 为 `total`、`monthly`、`purchased`、`free`、`granted`、`topped_up` |
+| `llm_quota_balance_available` | | DeepSeek 的 `is_available`：余额是否可用 |
 | `llm_quota_plan_info` | `plan` | 套餐名 |
 | `llm_quota_up` | | 上次查询是否成功 |
 | `llm_quota_auth_valid` | | 上次查询是否被 401/403 拒绝 |
+| `llm_quota_endpoint_supported` | | 账号所在主机是否提供该额度/余额接口（中转站常为 0） |
 | `llm_quota_key_blacklisted` | | Key 是否在黑名单中 |
 | `llm_quota_key_blacklist_until_timestamp_seconds` | | 黑名单到期时间 |
 | `llm_quota_last_attempt_timestamp_seconds` | | 上次查询时间 |
@@ -111,6 +133,11 @@ ALTER ROLE llm_usage_exporter SET default_transaction_read_only = on;
 ```sh
 python3 deploy/grafana/gen_dashboard.py out.json --datasource-uid <your-prometheus-uid> --title "LLM quota" --job llm_usage
 ```
+
+同一个 Prometheus 采集多个 sub2api 时，每个 exporter 的配置里设置不同的 `instance`，它会作为 `sub2api_instance` 标签加到所有指标上；再用 `--instance <name>` 为每个实例生成一个看板（`--uid` 也要不同）。
+首屏是状态条加上每个提供商一张表，表的高度按账号数确定，所以所有账号不用滚动就能看到；历史和明细在下面。
+账号数来自 `--prometheus <url>`（从运行中的 Prometheus 统计）或 `--providers zhipu=8,kimi=4`；账号增减后重新生成即可。
+`deploy/systemd/llm-usage-exporter@.service` 是多实例用的模板单元，配置文件为 `/etc/llm-usage-exporter/<instance>.yaml`。
 
 仓库里的 `llm-usage-dashboard.json` 使用默认值（数据源 uid `prometheus`）。
 

@@ -24,12 +24,16 @@ var (
 		"Absolute window limit, when the provider reports it.", withBase("window", "unit"), nil)
 	descBalance = prometheus.NewDesc("llm_quota_balance",
 		"Credit balance reported by the provider.", withBase("kind", "currency"), nil)
+	descBalanceAvailable = prometheus.NewDesc("llm_quota_balance_available",
+		"Provider's own flag that the balance is usable (DeepSeek is_available).", base, nil)
 	descPlan = prometheus.NewDesc("llm_quota_plan_info",
 		"Subscription plan reported by the provider.", withBase("plan"), nil)
 	descUp = prometheus.NewDesc("llm_quota_up",
 		"1 if the last quota fetch for the account succeeded.", base, nil)
 	descAuthValid = prometheus.NewDesc("llm_quota_auth_valid",
 		"0 if the last quota fetch was rejected with 401/403.", base, nil)
+	descSupported = prometheus.NewDesc("llm_quota_endpoint_supported",
+		"0 if the account's host does not offer the quota/balance endpoint (e.g. a relay).", base, nil)
 	descBlacklisted = prometheus.NewDesc("llm_quota_key_blacklisted",
 		"1 while the account's API key is skipped after an auth rejection.", base, nil)
 	descBlacklistUntil = prometheus.NewDesc("llm_quota_key_blacklist_until_timestamp_seconds",
@@ -56,8 +60,8 @@ var (
 
 func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	for _, d := range []*prometheus.Desc{
-		descUsedRatio, descReset, descWindowUsed, descWindowLimit, descBalance, descPlan,
-		descUp, descAuthValid, descBlacklisted, descBlacklistUntil, descLastAttempt,
+		descUsedRatio, descReset, descWindowUsed, descWindowLimit, descBalance, descBalanceAvailable, descPlan,
+		descUp, descAuthValid, descSupported, descBlacklisted, descBlacklistUntil, descLastAttempt,
 		descLastSuccess, descDuration, descHTTPStatus, descAccountInfo, descAccounts,
 		descFetchTotal, descDBUp, descDBReload,
 	} {
@@ -97,14 +101,14 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	}
 	// Two accounts may share a name; account_id keeps their series apart, but
 	// the exact same account must not be emitted twice.
-	seen := map[int64]bool{}
+	seen := map[string]bool{}
 	for _, a := range e.accounts {
 		if seen[a.ID] {
 			continue
 		}
 		seen[a.ID] = true
 		perProvider[a.Provider]++
-		l := []string{a.Provider, strconv.FormatInt(a.ID, 10), a.Name}
+		l := []string{a.Provider, a.ID, a.Name}
 		gauge(ch, descAccountInfo, 1, append(l, a.Platform, a.Status, strconv.FormatBool(a.Schedulable))...)
 
 		g := e.groups[a.GroupKey]
@@ -122,6 +126,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		}
 		gauge(ch, descUp, boolF(g.up), l...)
 		gauge(ch, descAuthValid, boolF(!g.authFailed), l...)
+		gauge(ch, descSupported, boolF(!g.unsupported), l...)
 		gauge(ch, descLastAttempt, unixF(g.lastAttempt), l...)
 		gauge(ch, descDuration, g.lastDuration.Seconds(), l...)
 		gauge(ch, descHTTPStatus, float64(g.lastStatus), l...)
@@ -152,6 +157,9 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		}
 		for _, b := range res.Balances {
 			gauge(ch, descBalance, b.Amount, append(l, b.Kind, b.Currency)...)
+		}
+		if res.BalanceAvailable != nil {
+			gauge(ch, descBalanceAvailable, boolF(*res.BalanceAvailable), l...)
 		}
 		if res.Plan != "" {
 			gauge(ch, descPlan, 1, append(l, res.Plan)...)

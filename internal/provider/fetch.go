@@ -40,6 +40,9 @@ type Result struct {
 	Tiers    []Tier
 	Balances []Balance
 	Plan     string
+	// BalanceAvailable is the provider's own "balance is usable" flag
+	// (DeepSeek is_available); nil when the provider has none.
+	BalanceAvailable *bool
 }
 
 // HTTPError is a non-2xx upstream response, or a 2xx response that carries a
@@ -60,6 +63,11 @@ func (e *HTTPError) Error() string {
 // ErrNoWindows means a 2xx response held no recognizable usage window, which
 // usually means the upstream schema changed. It is a failure, not "0% used".
 var ErrNoWindows = errors.New("response contains no recognized usage window (upstream schema may have changed)")
+
+// ErrUnsupported means the account's host does not offer this endpoint (a
+// relay without the vendor's quota or balance API). It is not a failure of
+// the account and is retried rarely.
+var ErrUnsupported = errors.New("endpoint not offered by this host")
 
 // ErrInvalidResponse means the response body could not be decoded.
 var ErrInvalidResponse = errors.New("invalid upstream response")
@@ -88,6 +96,8 @@ func Fetch(ctx context.Context, client *http.Client, t Target) (*Result, error) 
 		return fetchCommandCode(ctx, client, t)
 	case config.ProviderCline:
 		return fetchCline(ctx, client, t)
+	case config.ProviderDeepSeek:
+		return fetchDeepSeek(ctx, client, t)
 	}
 	return nil, fmt.Errorf("unsupported provider %q", t.Provider)
 }
@@ -536,4 +546,77 @@ func fetchCline(ctx context.Context, client *http.Client, t Target) (*Result, er
 	}
 	res.Balances = []Balance{{Kind: "total", Amount: math.Round(micro.Float()/100) / 10000, Currency: "USD"}}
 	return res, nil
+}
+
+// ---- DeepSeek ----
+//
+//	GET /user/balance -> {is_available, balance_infos:[{currency, total_balance,
+//	                       granted_balance, topped_up_balance}]}
+//
+// Dual-currency accounts return one entry per currency (CNY and USD).
+// Ported from sub2api cn_provider_balance_service.go.
+
+// deepSeekBalanceURL appends /user/balance to the OpenAI-format base URL.
+func deepSeekBalanceURL(baseURL string) string {
+	return strings.TrimRight(strings.TrimSpace(baseURL), "/") + "/user/balance"
+}
+
+func fetchDeepSeek(ctx context.Context, client *http.Client, t Target) (*Result, error) {
+	body, err := get(ctx, client, t, request{url: deepSeekBalanceURL(t.BaseURL), auth: "Bearer " + t.APIKey})
+	if err != nil {
+		if deepSeekEndpointMissing(err) {
+			return nil, fmt.Errorf("%w: %v", ErrUnsupported, err)
+		}
+		return nil, err
+	}
+	infos := gjson.GetBytes(body, "balance_infos")
+	if !infos.IsArray() {
+		// A 2xx without balance_infos is a relay answering something else.
+		return nil, fmt.Errorf("%w: response has no balance_infos", ErrUnsupported)
+	}
+	res := &Result{}
+	infos.ForEach(func(_, info gjson.Result) bool {
+		currency := strings.ToUpper(strings.TrimSpace(info.Get("currency").String()))
+		if currency == "" {
+			currency = "CNY"
+		}
+		total, ok := parseF64(info.Get("total_balance").Value())
+		if !ok {
+			return true
+		}
+		res.Balances = append(res.Balances, Balance{Kind: "total", Amount: total, Currency: currency})
+		for _, k := range []struct{ field, kind string }{{"granted_balance", "granted"}, {"topped_up_balance", "topped_up"}} {
+			if v, ok := parseF64(info.Get(k.field).Value()); ok {
+				res.Balances = append(res.Balances, Balance{Kind: k.kind, Amount: v, Currency: currency})
+			}
+		}
+		return true
+	})
+	if len(res.Balances) == 0 {
+		return nil, fmt.Errorf("%w: no valid balance entries", ErrInvalidResponse)
+	}
+	available := true // absent means healthy, as in sub2api
+	if v := gjson.GetBytes(body, "is_available"); v.Exists() {
+		available = v.Bool()
+	}
+	res.BalanceAvailable = &available
+	return res, nil
+}
+
+// deepSeekEndpointMissing reports whether a /user/balance error means the host
+// has no such endpoint: relays answer 400 (treating it as a chat request),
+// 404/405/501, or wrap a "not found" / "unsupported" upstream error.
+func deepSeekEndpointMissing(err error) bool {
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) || httpErr.Business {
+		return false
+	}
+	switch httpErr.Status {
+	case http.StatusBadRequest, http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented:
+		return true
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests:
+		return false
+	}
+	body := strings.ToLower(httpErr.Body)
+	return strings.Contains(body, "not found") || strings.Contains(body, "unsupported")
 }

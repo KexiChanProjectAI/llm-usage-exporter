@@ -20,12 +20,13 @@ const (
 	ProviderOpenCodeGo  = "opencode_go"
 	ProviderCommandCode = "command_code"
 	ProviderCline       = "cline"
+	ProviderDeepSeek    = "deepseek" // pay-as-you-go balance only
 )
 
 // Providers lists every supported provider ID.
 var Providers = []string{
 	ProviderZhipu, ProviderMiniMax, ProviderKimi,
-	ProviderOpenCodeGo, ProviderCommandCode, ProviderCline,
+	ProviderOpenCodeGo, ProviderCommandCode, ProviderCline, ProviderDeepSeek,
 }
 
 // ProxyDirect is a proxy value that forces a direct connection and stops the
@@ -35,6 +36,9 @@ const ProxyDirect = "direct"
 type Config struct {
 	Listen      string `yaml:"listen"`
 	MetricsPath string `yaml:"metrics_path"`
+	// Instance names the sub2api instance this exporter reads. When set, every
+	// exported metric carries it as the sub2api_instance label.
+	Instance string `yaml:"instance"`
 
 	Database Database `yaml:"database"`
 
@@ -46,6 +50,7 @@ type Config struct {
 	UseAccountProxy *bool `yaml:"use_account_proxy"`
 
 	Collect       Collect                   `yaml:"collect"`
+	Accounts      []StaticAccount           `yaml:"accounts"`
 	AuthBlacklist AuthBlacklist             `yaml:"auth_blacklist"`
 	Providers     map[string]ProviderConfig `yaml:"providers"`
 }
@@ -64,6 +69,25 @@ type Collect struct {
 	// MaxStaleness stops exporting quota values whose last successful fetch is
 	// older than this. Zero disables the cut-off.
 	MaxStaleness time.Duration `yaml:"max_staleness"`
+	// UnsupportedRetry is how long to wait before asking again an endpoint
+	// that does not exist on the account's host (e.g. a DeepSeek relay
+	// without /user/balance).
+	UnsupportedRetry time.Duration `yaml:"unsupported_retry"`
+}
+
+// StaticAccount is an account defined in the config file instead of sub2api,
+// e.g. an official DeepSeek key that is not routed through sub2api.
+type StaticAccount struct {
+	Name     string `yaml:"name"`
+	Provider string `yaml:"provider"`
+	APIKey   string `yaml:"api_key"`
+	// BaseURL defaults to the provider's official endpoint.
+	BaseURL string `yaml:"base_url"`
+	// AccountMode defaults to "coding" for zhipu, kimi and minimax and to the
+	// provider default otherwise.
+	AccountMode string `yaml:"account_mode"`
+	// Proxy takes the place of a sub2api account proxy in the precedence.
+	Proxy string `yaml:"proxy"`
 }
 
 type AuthBlacklist struct {
@@ -179,6 +203,18 @@ func (c *Config) applyDefaults() {
 	if c.Collect.MaxStaleness == 0 {
 		c.Collect.MaxStaleness = time.Hour
 	}
+	if c.Collect.UnsupportedRetry == 0 {
+		c.Collect.UnsupportedRetry = 6 * time.Hour
+	}
+	for i := range c.Accounts {
+		a := &c.Accounts[i]
+		if a.AccountMode == "" {
+			switch a.Provider {
+			case ProviderZhipu, ProviderKimi, ProviderMiniMax:
+				a.AccountMode = "coding"
+			}
+		}
+	}
 	if c.AuthBlacklist.Duration == 0 {
 		c.AuthBlacklist.Duration = 6 * time.Hour
 	}
@@ -207,6 +243,9 @@ func (c *Config) validate() error {
 	if c.Collect.MaxStaleness < 0 {
 		return fmt.Errorf("collect.max_staleness must not be negative")
 	}
+	if c.Instance != strings.TrimSpace(c.Instance) {
+		return fmt.Errorf("instance must not have leading or trailing spaces")
+	}
 	if !strings.HasPrefix(c.MetricsPath, "/") {
 		return fmt.Errorf("metrics_path must start with /")
 	}
@@ -216,6 +255,23 @@ func (c *Config) validate() error {
 	known := map[string]bool{}
 	for _, id := range Providers {
 		known[id] = true
+	}
+	names := map[string]bool{}
+	for i, a := range c.Accounts {
+		switch {
+		case strings.TrimSpace(a.Name) == "":
+			return fmt.Errorf("accounts[%d]: name is required", i)
+		case names[a.Name]:
+			return fmt.Errorf("accounts[%d]: duplicate name %q", i, a.Name)
+		case !known[a.Provider]:
+			return fmt.Errorf("accounts[%d] (%s): unknown provider %q (supported: %s)", i, a.Name, a.Provider, strings.Join(Providers, ", "))
+		case strings.TrimSpace(a.APIKey) == "":
+			return fmt.Errorf("accounts[%d] (%s): api_key is required", i, a.Name)
+		}
+		names[a.Name] = true
+		if err := ValidateProxy(a.Proxy); err != nil {
+			return fmt.Errorf("accounts[%d] (%s).proxy: %w", i, a.Name, err)
+		}
 	}
 	for id, p := range c.Providers {
 		if !known[id] {

@@ -25,6 +25,10 @@ import (
 
 var version = "dev"
 
+// InstanceLabel carries config.Instance on every metric. It is not "instance",
+// which Prometheus sets to the scrape target and would rename ours.
+const InstanceLabel = "sub2api_instance"
+
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to the config file")
 	logLevel := flag.String("log-level", "info", "debug, info, warn or error")
@@ -76,12 +80,21 @@ func run(configPath string, log *slog.Logger) error {
 	}
 	defer pool.Close()
 
+	static := source.StaticAccounts(cfg.Accounts)
 	exp := collector.New(cfg, func(ctx context.Context) ([]source.Account, error) {
-		return source.LoadAccounts(ctx, pool)
+		accs, err := source.LoadAccounts(ctx, pool)
+		if err != nil {
+			return nil, err
+		}
+		return append(accs, static...), nil
 	}, nil, log)
 
 	reg := prometheus.NewRegistry()
-	reg.MustRegister(exp, collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	var registerer prometheus.Registerer = reg
+	if cfg.Instance != "" {
+		registerer = prometheus.WrapRegistererWith(prometheus.Labels{InstanceLabel: cfg.Instance}, reg)
+	}
+	registerer.MustRegister(exp, collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
 	mux := http.NewServeMux()
 	mux.Handle(cfg.MetricsPath, promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
@@ -102,7 +115,7 @@ func run(configPath string, log *slog.Logger) error {
 
 	srvErr := make(chan error, 1)
 	go func() {
-		log.Info("serving metrics", "listen", cfg.Listen, "path", cfg.MetricsPath, "version", version,
+		log.Info("serving metrics", "instance", cfg.Instance, "listen", cfg.Listen, "path", cfg.MetricsPath, "version", version,
 			"providers", cfg.EnabledProviders())
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			srvErr <- err

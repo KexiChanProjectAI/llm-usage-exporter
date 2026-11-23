@@ -63,6 +63,8 @@ func (t Target) endpointKey() string {
 		return kimiQuotaURL(t.BaseURL)
 	case config.ProviderMiniMax:
 		return minimaxQuotaURL(t.BaseURL)
+	case config.ProviderDeepSeek:
+		return deepSeekBalanceURL(t.BaseURL)
 	default: // fixed official hosts
 		return ""
 	}
@@ -131,6 +133,25 @@ func Classify(acc *source.Account) (Target, bool) {
 	// An OpenCode Go subscription key mounted on another platform.
 	if acc.Type == "apikey" && isOpenCodeGoMountPlatform(acc.Platform) && isOpenCodeGoBaseURL(acc.Credential("base_url")) {
 		t.Provider = config.ProviderOpenCodeGo
+		return t, true
+	}
+
+	// DeepSeek pay-as-you-go balance, at <OpenAI-format base>/user/balance as
+	// in sub2api. The request goes to the host the account already sends this
+	// key to. For Anthropic-protocol accounts sub2api falls back to the
+	// official base, which would send a relay's key to DeepSeek; those are
+	// only queried when they are on the official host.
+	if acc.Platform == config.ProviderDeepSeek && accountMode(acc) != "coding" {
+		if strings.TrimSpace(acc.Credential("api_protocol")) == "anthropic" {
+			if !isHTTPSHost(baseURL, "api.deepseek.com") {
+				return Target{}, false
+			}
+			t.BaseURL = defaultBaseURLs["deepseek"].byMode["payg"]
+		}
+		if u, err := url.Parse(t.BaseURL); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+			return Target{}, false
+		}
+		t.Provider = config.ProviderDeepSeek
 		return t, true
 	}
 	return Target{}, false

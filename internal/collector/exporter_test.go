@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -40,6 +41,9 @@ func newHarness(t *testing.T, yaml string) *harness {
 		defer h.mu.Unlock()
 		h.calls[tg.APIKey]++
 		if s := h.status[tg.APIKey]; s != 0 {
+			if s == 404 {
+				return nil, fmt.Errorf("%w: %w", provider.ErrUnsupported, &provider.HTTPError{Status: s, Body: "unsupported API path"})
+			}
 			return nil, &provider.HTTPError{Status: s, Body: "denied"}
 		}
 		return &provider.Result{
@@ -227,4 +231,29 @@ func TestCollectorIsConsistent(t *testing.T) {
 	problems, err := testutil.CollectAndLint(h.e)
 	require.NoError(t, err)
 	require.Empty(t, problems)
+}
+
+func TestUnsupportedEndpointIsNotAFailureAndRetriedLate(t *testing.T) {
+	h := newHarness(t, "")
+	h.accounts = []source.Account{{ID: 9, Name: "relay", Platform: "deepseek", Type: "apikey", Status: "active",
+		Credentials: map[string]any{"api_key": "r", "base_url": "https://relay.example.com/v1"}}}
+	h.status["r"] = 404
+	h.step(31*time.Second, true)
+	require.Equal(t, 1, h.count("r"))
+	require.Contains(t, h.metric("llm_quota_endpoint_supported"), "account_id=9,account_name=relay,provider=deepseek 0")
+	require.Contains(t, h.metric("llm_quota_key_blacklisted"), " 0")
+	require.Contains(t, h.metric("llm_quota_fetch_total"), "result=unsupported 1")
+
+	h.step(5*time.Hour, false)
+	require.Equal(t, 1, h.count("r"), "not retried every interval")
+	h.step(time.Hour+time.Minute, false)
+	require.Equal(t, 2, h.count("r"))
+}
+
+func TestStaticAccountLabel(t *testing.T) {
+	h := newHarness(t, "")
+	h.accounts = source.StaticAccounts([]config.StaticAccount{{Name: "DeepSeek Cyber", Provider: "deepseek", APIKey: "s"}})
+	h.step(31*time.Second, true)
+	require.Contains(t, h.metric("llm_quota_balance"), "account_id=cfg:DeepSeek Cyber,account_name=DeepSeek Cyber")
+	require.Contains(t, h.metric("llm_quota_account_info"), "status=config")
 }

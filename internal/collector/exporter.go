@@ -9,7 +9,6 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 
@@ -27,7 +26,7 @@ type Fetcher func(ctx context.Context, client *http.Client, t provider.Target) (
 
 // boundAccount is an account mapped to the group that fetches its quota.
 type boundAccount struct {
-	ID          int64
+	ID          string
 	Name        string
 	Platform    string
 	Status      string
@@ -54,6 +53,7 @@ type group struct {
 	lastDuration time.Duration
 	up           bool
 	authFailed   bool
+	unsupported  bool
 	lastStatus   int
 	lastErr      string
 	result       *provider.Result
@@ -172,7 +172,7 @@ func (e *Exporter) reload(ctx context.Context) {
 		key := t.Identity() + "|" + proxyURL
 		wanted[key] = pending{target: t, proxyURL: proxyURL}
 		bound = append(bound, boundAccount{
-			ID: acc.ID, Name: acc.Name, Platform: acc.Platform, Status: acc.Status,
+			ID: acc.IDLabel(), Name: acc.Name, Platform: acc.Platform, Status: acc.Status,
 			Schedulable: acc.Schedulable, Provider: t.Provider, GroupKey: key,
 		})
 	}
@@ -283,7 +283,7 @@ func (e *Exporter) runFetch(ctx context.Context, g *group) {
 	g.nextRun = end.Add(g.interval + jitter)
 
 	if err == nil {
-		g.up, g.authFailed, g.lastStatus, g.lastErr = true, false, http.StatusOK, ""
+		g.up, g.authFailed, g.unsupported, g.lastStatus, g.lastErr = true, false, false, http.StatusOK, ""
 		g.result = res
 		g.lastSuccess = end
 		e.stats[[2]string{g.target.Provider, "success"}]++
@@ -294,6 +294,17 @@ func (e *Exporter) runFetch(ctx context.Context, g *group) {
 	}
 
 	status := provider.StatusOf(err)
+	if errors.Is(err, provider.ErrUnsupported) {
+		g.up, g.authFailed, g.unsupported = false, false, true
+		g.lastStatus, g.lastErr, g.result = status, err.Error(), nil
+		g.nextRun = end.Add(e.cfg.Collect.UnsupportedRetry)
+		e.stats[[2]string{g.target.Provider, "unsupported"}]++
+		e.log.Info("endpoint not offered by the account's host; retrying later",
+			"provider", g.target.Provider, "accounts", e.accountIDs(g.key), "status", status,
+			"retry_at", g.nextRun.UTC().Format(time.RFC3339), "error", g.lastErr)
+		return
+	}
+	g.unsupported = false
 	g.up = false
 	g.lastStatus = status
 	g.lastErr = err.Error()
@@ -347,7 +358,7 @@ func (e *Exporter) accountIDs(key string) []string {
 	var ids []string
 	for _, a := range e.accounts {
 		if a.GroupKey == key {
-			ids = append(ids, strconv.FormatInt(a.ID, 10))
+			ids = append(ids, a.ID)
 		}
 	}
 	sort.Strings(ids)

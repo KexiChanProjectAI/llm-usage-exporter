@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KexiChanProjectAI/llm-usage-exporter/internal/config"
 	"github.com/KexiChanProjectAI/llm-usage-exporter/internal/source"
 )
 
@@ -35,6 +36,13 @@ func TestClassify(t *testing.T) {
 		{"minimax coding", acct("minimax", "apikey", map[string]any{"account_mode": "coding"}), "minimax"},
 		{"minimax intl", acct("minimax", "apikey", map[string]any{"account_mode": "coding", "base_url": "https://api.minimax.io/anthropic"}), "minimax"},
 		{"deepseek coding is not a plan", acct("deepseek", "apikey", map[string]any{"account_mode": "coding"}), ""},
+		{"deepseek payg default base", acct("deepseek", "apikey", map[string]any{"account_mode": "payg"}), "deepseek"},
+		{"deepseek no mode", acct("deepseek", "apikey", map[string]any{}), "deepseek"},
+		{"deepseek anthropic base", acct("deepseek", "apikey", map[string]any{"base_url": "https://api.deepseek.com/anthropic"}), "deepseek"},
+		{"deepseek relay", acct("deepseek", "apikey", map[string]any{"base_url": "https://relay.example.com/v1"}), "deepseek"},
+		{"deepseek relay anthropic", acct("deepseek", "apikey", map[string]any{"base_url": "https://relay.example.com", "api_protocol": "anthropic"}), ""},
+		{"deepseek official anthropic", acct("deepseek", "apikey", map[string]any{"base_url": "https://api.deepseek.com/anthropic", "api_protocol": "anthropic"}), "deepseek"},
+		{"deepseek mounted opencode", acct("deepseek", "apikey", map[string]any{"base_url": "https://opencode.ai/zen/go/v1"}), "opencode_go"},
 		{"opencode go default", acct("opencode_go", "apikey", map[string]any{}), "opencode_go"},
 		{"opencode go relay base still official key", acct("opencode_go", "apikey", map[string]any{"base_url": "https://relay.example.com"}), "opencode_go"},
 		{"opencode zen", acct("opencode_go", "apikey", map[string]any{"account_mode": "zen"}), ""},
@@ -87,4 +95,38 @@ func TestTargetIdentityAndKeyHash(t *testing.T) {
 	require.NotEqual(t, a.Identity(), c.Identity())
 	require.NotEqual(t, a.KeyHash(), c.KeyHash())
 	require.NotContains(t, a.Identity(), "k1")
+}
+
+func TestDeepSeekBalanceURL(t *testing.T) {
+	cases := map[string]struct {
+		creds map[string]any
+		want  string
+	}{
+		"official default":   {map[string]any{}, "https://api.deepseek.com/user/balance"},
+		"relay with v1":      {map[string]any{"base_url": "https://relay.example.com/v1/"}, "https://relay.example.com/v1/user/balance"},
+		"adaptive chat base": {map[string]any{"base_url": "https://x.example.com", "api_protocol": "adaptive", "api_base_urls": map[string]any{"chat_completions": "https://y.example.com/v1"}}, "https://y.example.com/v1/user/balance"},
+		"official anthropic": {map[string]any{"base_url": "https://api.deepseek.com/anthropic", "api_protocol": "anthropic"}, "https://api.deepseek.com/user/balance"},
+	}
+	for name, tc := range cases {
+		got, ok := Classify(acct("deepseek", "apikey", tc.creds))
+		require.True(t, ok, name)
+		require.Equal(t, tc.want, deepSeekBalanceURL(got.BaseURL), name)
+	}
+}
+
+func TestClassifyStaticAccounts(t *testing.T) {
+	accs := source.StaticAccounts([]config.StaticAccount{
+		{Name: "ds", Provider: "deepseek", APIKey: "sk"},
+		{Name: "glm", Provider: "zhipu", APIKey: "k", AccountMode: "coding"},
+		{Name: "kimi", Provider: "kimi", APIKey: "k", AccountMode: "coding"},
+		{Name: "cc", Provider: "command_code", APIKey: "k"},
+	})
+	want := []string{"deepseek", "zhipu", "kimi", "command_code"}
+	for i := range accs {
+		got, ok := Classify(&accs[i])
+		require.True(t, ok, accs[i].Name)
+		require.Equal(t, want[i], got.Provider)
+	}
+	got, _ := Classify(&accs[0])
+	require.Equal(t, "https://api.deepseek.com/user/balance", deepSeekBalanceURL(got.BaseURL))
 }

@@ -220,3 +220,56 @@ func TestRedirectIsNotFollowedAndBodyIsBounded(t *testing.T) {
 	_, err = get(context.Background(), client, Target{APIKey: "k"}, request{url: srv.URL + "/big", auth: "Bearer k"})
 	require.ErrorIs(t, err, ErrInvalidResponse)
 }
+
+func TestFetchDeepSeekBalance(t *testing.T) {
+	f, client := newFake(map[string]func(*http.Request) (int, string){
+		"api.deepseek.com/user/balance": fixed(200, `{"is_available":false,"balance_infos":[
+			{"currency":"CNY","total_balance":"110.00","granted_balance":"10.00","topped_up_balance":"100.00"},
+			{"currency":"usd","total_balance":"2.5"},
+			{"currency":"EUR","total_balance":"oops"}]}`),
+	})
+	res, err := Fetch(context.Background(), client, Target{Provider: "deepseek", APIKey: "k", BaseURL: "https://api.deepseek.com"})
+	require.NoError(t, err)
+	require.Equal(t, "Bearer k", f.seen[0].Header.Get("Authorization"))
+	require.Equal(t, []Balance{
+		{Kind: "total", Amount: 110, Currency: "CNY"},
+		{Kind: "granted", Amount: 10, Currency: "CNY"},
+		{Kind: "topped_up", Amount: 100, Currency: "CNY"},
+		{Kind: "total", Amount: 2.5, Currency: "USD"},
+	}, res.Balances)
+	require.NotNil(t, res.BalanceAvailable)
+	require.False(t, *res.BalanceAvailable)
+	require.Empty(t, res.Tiers)
+}
+
+func TestFetchDeepSeekInvalid(t *testing.T) {
+	_, client := newFake(map[string]func(*http.Request) (int, string){
+		"api.deepseek.com/user/balance": fixed(200, `{"balance_infos":[]}`),
+	})
+	_, err := Fetch(context.Background(), client, Target{Provider: "deepseek", APIKey: "k", BaseURL: "https://api.deepseek.com/"})
+	require.ErrorIs(t, err, ErrInvalidResponse)
+}
+
+func TestFetchDeepSeekRelayWithoutBalanceAPI(t *testing.T) {
+	cases := map[string]struct {
+		status      int
+		body        string
+		unsupported bool
+	}{
+		"chat gateway 400":     {400, `{"error":{"message":"request must contain model"}}`, true},
+		"404":                  {404, `{"error":{"message":"unsupported API path"}}`, true},
+		"503 wrapping 404":     {503, `{"error":{"message":"Not Found (session x)"}}`, true},
+		"200 something else":   {200, `{"object":"chat.completion"}`, true},
+		"401 is a key problem": {401, `{"error":"invalid key"}`, false},
+		"429 is a limit":       {429, `{"error":"not found"}`, false},
+		"plain 500":            {500, `{"error":"boom"}`, false},
+	}
+	for name, tc := range cases {
+		_, client := newFake(map[string]func(*http.Request) (int, string){
+			"relay.example.com/v1/user/balance": fixed(tc.status, tc.body),
+		})
+		_, err := Fetch(context.Background(), client, Target{Provider: "deepseek", APIKey: "k", BaseURL: "https://relay.example.com/v1"})
+		require.Error(t, err, name)
+		require.Equal(t, tc.unsupported, errors.Is(err, ErrUnsupported), name)
+	}
+}
