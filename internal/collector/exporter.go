@@ -371,3 +371,15 @@ func (e *Exporter) Healthy() bool {
 	defer e.mu.Unlock()
 	return e.dbUp
 }
+
+// AccountProviders maps the account_id label of every tracked account to the
+// provider it was classified as.
+func (e *Exporter) AccountProviders() map[string]string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	out := make(map[string]string, len(e.accounts))
+	for _, a := range e.accounts {
+		out[a.ID] = a.Provider
+	}
+	return out
+}

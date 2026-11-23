@@ -42,3 +42,15 @@ providers:
   cline:        { enabled: true, interval: 5m }
   deepseek:     { enabled: true, interval: 5m }   # pay-as-you-go balance
   # example: kimi: { interval: 5m, proxy: "socks5h://127.0.0.1:1080" }
+
+# Token usage and its cost from sub2api usage_logs (needs SELECT on usage_logs).
+usage:
+  enabled: true
+  timezone: UTC          # IANA name; hours and days start in this zone
+  windows: [1, 7, 30]    # trailing windows in days for llm_usage_* per account
+  hourly_buckets: 24     # llm_usage_bucket_*{granularity="hour"}
+  daily_buckets: 7       # llm_usage_bucket_*{granularity="day"}
+  interval: 5m           # re-read the last `lookback` this often
+  lookback: 1h
+  resync_interval: 6h    # re-read the whole span (also drops deleted rows)
+  query_timeout: 1m

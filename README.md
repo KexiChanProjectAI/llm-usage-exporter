@@ -3,6 +3,7 @@
 从 sub2api 数据库读取 Coding Plan / 订阅类账号，定时查询各提供商的用量窗口，以 Prometheus 指标暴露。
 
 支持：GLM（智谱，`zhipu`）、MiniMax、Kimi、OpenCode Go、Command Code、Cline 的用量窗口，以及 DeepSeek 按量付费账号的余额。
+另外从 sub2api 的 `usage_logs` 统计每个账号、每个提供商的 Token 用量和按标价折算的等价价值。
 
 ## 工作方式
 
@@ -30,6 +31,25 @@ accounts:
 `base_url` 默认是该提供商的官方地址；`account_mode` 对 zhipu、kimi、minimax 默认为 `coding`；`proxy` 的优先级与 sub2api 账号的代理相同。
 这些账号的 `account_id` 标签为 `cfg:<name>`，`status` 为 `config`。
 读取 sub2api 失败时，这些账号也随之保持上一次加载的状态。
+
+## Token 用量与等价价值
+
+从 sub2api 的 `usage_logs` 读取，不请求上游；配置在 `usage` 下（见 `config.example.yaml`）。
+
+- 统计所有有请求记录的账号（含 OAuth 账号和已软删除的账号）。`provider` 标签对本 exporter 跟踪额度的账号是它的提供商，其余账号是 sub2api 的 `platform`（如 `anthropic`、`openai`）。
+- 价格沿用 sub2api 记账时算出的费用（美元），不另读价格表：
+  - `kind="total"`：等价价值，即 Token 按模型标价计算的费用（`total_cost`，未乘分组倍率）；
+  - `kind="actual"`：sub2api 向用户实际扣费（`actual_cost`，已乘分组倍率）；
+  - `kind="account"`：账号侧成本，与 sub2api 看板的“账号成本”算法相同：`COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1)`。
+- 内存里按“账号 × 小时”缓存。启动时和每 `resync_interval` 读一次完整区间；其间每 `interval` 只重读最近 `lookback`（向下取整到整点）。
+- 窗口按小时对齐：`1d` 是当前小时加之前 23 个小时。小时和天的起点按 `usage.timezone`。
+- 读失败时保留上次的值，`llm_usage_up` 为 0。
+
+只读角色需要额外授权：
+
+```sql
+GRANT SELECT ON usage_logs TO llm_usage_exporter;
+```
 
 ## 代理
 
@@ -86,6 +106,20 @@ Anthropic 协议的账号只在 base_url 是官方 `api.deepseek.com` 时查询�
 | `llm_exporter_db_up` | | 上次读库是否成功 |
 | `llm_exporter_db_last_success_timestamp_seconds` | | 上次读库成功时间 |
 
+用量指标（来自 `usage_logs`）：
+
+| 指标 | 标签 | 说明 |
+|---|---|---|
+| `llm_usage_requests` | 公共标签, `window` | 窗口内请求数；`window` 为 `usage.windows` 中的天数，如 `7d` |
+| `llm_usage_tokens` | 公共标签, `window`, `type` | 窗口内 Token 数；`type` 为 `input`、`output`、`cache_creation`、`cache_read` |
+| `llm_usage_cost_usd` | 公共标签, `window`, `kind` | 窗口内费用（美元）；`kind` 为 `total`（等价价值）、`actual`、`account` |
+| `llm_usage_bucket_requests` / `llm_usage_bucket_tokens` / `llm_usage_bucket_cost_usd` | `provider`, `granularity`, `bucket`（另有 `type` / `kind`） | 按提供商汇总的每小时（最近 `hourly_buckets` 个）/每天（最近 `daily_buckets` 天）用量；`bucket` 为起点，如 `2026-11-23 14:00`、`2026-11-23`；有用量的提供商补零 |
+| `llm_usage_up` | | 上次读 `usage_logs` 是否成功 |
+| `llm_usage_last_success_timestamp_seconds` | | 上次成功时间 |
+| `llm_usage_query_duration_seconds` | | 上次读取耗时 |
+
+桶指标的数值直接来自数据库，不依赖 Prometheus 的历史，所以刚部署就能画出完整的 24 小时和 7 天柱状图。
+
 示例告警：
 
 ```promql
@@ -109,7 +143,7 @@ SUB2API_DB_PASSWORD=... ./llm-usage-exporter -config config.yaml
 CREATE ROLE llm_usage_exporter LOGIN PASSWORD '...';
 GRANT CONNECT ON DATABASE sub2api TO llm_usage_exporter;
 GRANT USAGE ON SCHEMA public TO llm_usage_exporter;
-GRANT SELECT ON accounts, proxies TO llm_usage_exporter;
+GRANT SELECT ON accounts, proxies, usage_logs TO llm_usage_exporter;
 ALTER ROLE llm_usage_exporter SET default_transaction_read_only = on;
 ```
 
@@ -126,7 +160,8 @@ ALTER ROLE llm_usage_exporter SET default_transaction_read_only = on;
 ## Grafana 看板
 
 看板没有模板变量，因此可以直接设为 Grafana 公开看板（public dashboard 不支持模板变量）。
-包含：总览状态块、当前额度表、5h / 周 / 月用量曲线、查询状态时间线和余额曲线。
+包含：总览状态块、当前额度表、Token 用量与等价价值（按提供商的窗口汇总表，最近 24 小时和 7 天的堆叠柱状图，每个提供商一种颜色，以及按账号的明细表）、5h / 周 / 月用量曲线、查询状态时间线和余额曲线。
+`--usage-windows` 要与 exporter 的 `usage.windows` 一致（默认 `1,7,30`），传空字符串则不画用量部分。
 
 数据源 uid、标题和 Prometheus job 名可以在生成时指定：
 

@@ -14,6 +14,10 @@ Without either, every provider gets a table with room for 3 accounts.
 More accounts than that still show, with a scroll bar inside the table;
 regenerate to resize.
 
+Below the quota tables, a usage section charts tokens and their list-price
+value per provider from sub2api usage_logs: a table over each window in
+--usage-windows and stacked bars for the last 24 hours and the last 7 days.
+
 The dashboard has no template variables so that it can be shared as a
 Grafana public dashboard, which does not support them.
 """
@@ -29,6 +33,7 @@ ap.add_argument("--refresh", default="30s", help="auto-refresh interval")
 ap.add_argument("--instance", default="", help="only show the exporter whose config sets this instance (sub2api_instance label)")
 ap.add_argument("--providers", default="", help="provider=accounts list, e.g. zhipu=8,kimi=4; sets which tables exist and their height")
 ap.add_argument("--prometheus", default="", help="Prometheus base URL to count accounts per provider instead of --providers")
+ap.add_argument("--usage-windows", default="1,7,30", help="usage.windows of the exporter (days), for the usage table; empty hides the usage section")
 args = ap.parse_args()
 
 DS = {"type": "prometheus", "uid": args.datasource_uid}
@@ -222,6 +227,77 @@ for i in range(0, len(small), 2):
     panels += tables
     y += h
 
+# ---- usage from sub2api usage_logs ----
+USAGE_WINDOWS = [int(d) for d in args.usage_windows.split(",") if d.strip()]
+# One fixed colour per provider so that a provider looks the same in every chart.
+PROVIDER_COLORS = {"zhipu": "blue", "kimi": "purple", "minimax": "orange", "opencode_go": "green",
+    "command_code": "yellow", "cline": "red", "deepseek": "dark-blue", "anthropic": "#d97757",
+    "openai": "#10a37f", "gemini": "#4285f4", "antigravity": "#7c4dff"}
+COLOR_OVERRIDES = [{"matcher": {"id": "byName", "options": p}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": c}}]}
+    for p, c in PROVIDER_COLORS.items()]
+USAGE_DESC = ("From sub2api usage_logs: every account that served requests, grouped by provider "
+    "(the quota provider for tracked accounts, otherwise the sub2api platform). "
+    "Tokens include input, output, cache writes and cache reads. Value is the list price of those tokens "
+    "(usage_logs.total_cost, USD) before any group rate multiplier.")
+
+def usage_bars(title, metric, extra, granularity, unit, x, y):
+    return {"type": "barchart", "title": title, "datasource": DS, "id": nid(),
+        "description": USAGE_DESC + " Hours and days start in the exporter's usage.timezone.",
+        "gridPos": {"h": 9, "w": 12, "x": x, "y": y},
+        "targets": [tq(f'sum by (provider, bucket) ({metric}{{granularity="{granularity}"{extra}, {SEL}}})', "A")],
+        "transformations": [
+            {"id": "groupingToMatrix", "options": {"columnField": "provider", "rowField": "bucket", "valueField": "Value", "emptyValue": "zero"}},
+            {"id": "sortBy", "options": {"sort": [{"field": "bucket\\provider"}]}},
+            {"id": "organize", "options": {"renameByName": {"bucket\\provider": "Start"}}},
+        ],
+        "fieldConfig": {"defaults": {"unit": unit, "min": 0, "color": {"mode": "palette-classic-by-name"},
+            "custom": {"fillOpacity": 85, "lineWidth": 0, "gradientMode": "none"}}, "overrides": COLOR_OVERRIDES},
+        "options": {"stacking": "normal", "orientation": "vertical", "xField": "Start", "showValue": "never",
+            "barWidth": 0.85, "groupWidth": 0.8, "xTickLabelRotation": -45 if granularity == "hour" else 0, "xTickLabelSpacing": 0,
+            "legend": {"showLegend": True, "displayMode": "list", "placement": "bottom"},
+            "tooltip": {"mode": "multi", "sort": "desc"}}}
+
+def usage_table(title, by, y, h, desc):
+    targets, order, rename, overrides = [], list(by), {k: k.replace("_", " ").capitalize() for k in by}, list()
+    rename.update({"provider": "Provider", "account_name": "Account"})
+    for d in USAGE_WINDOWS:
+        win = f'window="{d}d", {SEL}'
+        t, v, r = f"T{d}", f"V{d}", f"Q{d}"
+        targets += [tq(f'sum by ({", ".join(by)}) (llm_usage_requests{{{win}}})', r),
+                    tq(f'sum by ({", ".join(by)}) (llm_usage_tokens{{{win}}})', t),
+                    tq(f'sum by ({", ".join(by)}) (llm_usage_cost_usd{{kind="total", {win}}})', v)]
+        order += [f"Value #{r}", f"Value #{t}", f"Value #{v}"]
+        rename.update({f"Value #{r}": f"Requests {d}d", f"Value #{t}": f"Tokens {d}d", f"Value #{v}": f"Value {d}d"})
+    overrides += [
+        {"matcher": {"id": "byRegexp", "options": "/^Requests /"}, "properties": [{"id": "unit", "value": "short"}, {"id": "decimals", "value": 1}]},
+        {"matcher": {"id": "byRegexp", "options": "/^Tokens /"}, "properties": [{"id": "unit", "value": "short"}, {"id": "decimals", "value": 2}]},
+        {"matcher": {"id": "byRegexp", "options": "/^Value /"}, "properties": [{"id": "unit", "value": "currencyUSD"}, {"id": "decimals", "value": 2}]},
+    ]
+    exclude = {"Time": True, "account_id": True}
+    return {"type": "table", "title": title, "datasource": DS, "id": nid(), "description": desc,
+        "gridPos": {"h": h, "w": 24, "x": 0, "y": y}, "targets": targets,
+        "transformations": [
+            {"id": "merge", "options": {}},
+            {"id": "organize", "options": {"excludeByName": exclude, "indexByName": {n: i for i, n in enumerate(order)}, "renameByName": rename}},
+            {"id": "sortBy", "options": {"sort": [{"field": f"Value {USAGE_WINDOWS[-1]}d", "desc": True}]}},
+        ],
+        "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}, "noValue": "0"}, "overrides": overrides},
+        "options": {"showHeader": True, "cellHeight": "sm"}}
+
+if USAGE_WINDOWS:
+    panels.append(row("Usage (sub2api usage_logs)", y)); y += 1
+    t = usage_table("Usage by provider", ["provider"], y, 7,
+        USAGE_DESC + " Windows are trailing, to the hour: 1d is this hour plus the 23 before it.")
+    panels.append(t); y += t["gridPos"]["h"]
+    panels += [
+        usage_bars("Tokens · last 24 hours", "llm_usage_bucket_tokens", "", "hour", "short", 0, y),
+        usage_bars("Tokens · last 7 days", "llm_usage_bucket_tokens", "", "day", "short", 12, y),
+    ]; y += 9
+    panels += [
+        usage_bars("Value (USD) · last 24 hours", "llm_usage_bucket_cost_usd", ', kind="total"', "hour", "currencyUSD", 0, y),
+        usage_bars("Value (USD) · last 7 days", "llm_usage_bucket_cost_usd", ', kind="total"', "day", "currencyUSD", 12, y),
+    ]; y += 9
+
 # ---- below the fold ----
 LEGEND = "{{provider}} / {{account_name}}"
 SERIES = {"lineWidth": 2, "fillOpacity": 0, "showPoints": "never", "spanNulls": 600000}
@@ -307,6 +383,11 @@ details = {"type": "table", "title": "Accounts", "datasource": DS, "id": nid(),
         ]},
     "options": {"showHeader": True, "cellHeight": "sm"}}
 panels.append(details); y += details["gridPos"]["h"]
+
+if USAGE_WINDOWS:
+    t = usage_table("Usage by account", ["provider", "account_name", "account_id"], y, 12,
+        USAGE_DESC + " Accounts with no requests in the longest window still show, with zeros.")
+    panels.append(t); y += t["gridPos"]["h"]
 
 status_h = max(5, min(14, math.ceil((N * 22 + 80) / 38)))
 panels.append({"type": "state-timeline", "title": "Fetch status", "datasource": DS, "id": nid(),
