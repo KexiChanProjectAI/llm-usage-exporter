@@ -52,5 +52,5 @@ usage:
   daily_buckets: 7       # llm_usage_bucket_*{granularity="day"}
   interval: 5m           # re-read the last `lookback` this often
   lookback: 1h
-  resync_interval: 6h    # re-read the whole span (also drops deleted rows)
+  resync_interval: 24h   # re-read the whole span; past hours never change, this only drops deleted rows
   query_timeout: 1m

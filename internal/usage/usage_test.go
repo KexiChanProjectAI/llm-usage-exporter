@@ -121,7 +121,7 @@ func TestIncrementalReplacesRecentHours(t *testing.T) {
 		{1, now.Add(-10 * time.Minute), tok(100, 0, 1)},
 		{1, now.Add(-5 * time.Hour), tok(50, 0, 1)},
 	}
-	c := newCol(t, "usage: {windows: [1]}", src, &now)
+	c := newCol(t, "usage: {windows: [7]}", src, &now)
 	c.Refresh(context.Background())
 
 	// New rows in this hour and the previous one; an old hour that changed is
@@ -135,7 +135,7 @@ func TestIncrementalReplacesRecentHours(t *testing.T) {
 	require.Equal(t, time.Date(2026, 11, 23, 9, 0, 0, 0, time.UTC), src.since[1])
 	require.Equal(t, 161.0, c.snapshot().Windows[0].Input)
 
-	now = now.Add(6 * time.Hour)
+	now = now.Add(24 * time.Hour)
 	c.Refresh(context.Background())
 	require.Equal(t, 1161.0, c.snapshot().Windows[0].Input, "a resync reads the whole span")
 }
